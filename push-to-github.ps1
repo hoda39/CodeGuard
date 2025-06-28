@@ -50,16 +50,23 @@ if ($status) {
 - Integrate static and dynamic analysis components
 - Professional documentation for security engineers and developers"
 
+    # Get current branch name
+    $currentBranch = & $gitPath branch --show-current
+    Write-Host "Current branch: $currentBranch" -ForegroundColor Cyan
+    
     # Push to GitHub
     Write-Host "Pushing to GitHub..." -ForegroundColor Yellow
-    & $gitPath push -u origin main
+    & $gitPath push -u origin $currentBranch
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Successfully pushed to GitHub!" -ForegroundColor Green
         Write-Host "Repository: https://github.com/hoda39/CodeGuard" -ForegroundColor Cyan
+        Write-Host "Branch: $currentBranch" -ForegroundColor Cyan
     } else {
         Write-Host "Failed to push to GitHub. Please check your credentials." -ForegroundColor Red
         Write-Host "You may need to authenticate with GitHub first." -ForegroundColor Yellow
+        Write-Host "Try running: git config --global user.name 'Your Name'" -ForegroundColor Yellow
+        Write-Host "Try running: git config --global user.email 'your.email@example.com'" -ForegroundColor Yellow
     }
 } else {
     Write-Host "No changes to commit." -ForegroundColor Yellow
