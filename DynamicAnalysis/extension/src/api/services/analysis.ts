@@ -15,6 +15,11 @@ import { memoryLeakChecker } from '../../core/checkers/memory_leak/index';
 import dotenv from 'dotenv';
 import path from 'path';
 import * as fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+
+const execAsync = promisify(exec);
 
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
@@ -41,7 +46,8 @@ interface AnalysisSession {
   startTime: number;
   decryptedContent?: string;
   tempFilePath?: string;
-  crashes?: number;  // NEW: Track crash count
+  crashes?: number;
+  containerId?: string; // NEW: Track container ID
 }
 
 /**
@@ -68,6 +74,159 @@ class CancellationToken {
 
   dispose() {
     this.emitter.removeAllListeners();
+  }
+}
+
+/**
+ * Container management for dynamic analysis
+ */
+class ContainerManager {
+  private static readonly CONTAINER_IMAGE = 'codeguard-dynamic:latest';
+  private static readonly CONTAINER_TIMEOUT = 600000; // 10 minutes
+
+  /**
+   * Build the analysis container if it doesn't exist
+   */
+  static async ensureContainerImage(): Promise<void> {
+    try {
+      // Check if image exists
+      await execAsync(`docker image inspect ${this.CONTAINER_IMAGE}`);
+      console.log('✅ Container image already exists');
+    } catch (error) {
+      console.log('🔨 Building container image...');
+      const dockerfilePath = path.resolve(__dirname, '../../../../Dockerfile');
+      await execAsync(`docker build -t ${this.CONTAINER_IMAGE} -f ${dockerfilePath} .`);
+      console.log('✅ Container image built successfully');
+    }
+  }
+
+  /**
+   * Run analysis in a container
+   */
+  static async runAnalysisInContainer(
+    sourceCode: string,
+    analysisId: string,
+    cancellationToken: CancellationToken
+  ): Promise<{ containerId: string; result: any }> {
+    // Ensure container image exists
+    await this.ensureContainerImage();
+
+    // Create temporary file for source code
+    const tempDir = path.join(process.cwd(), 'temp', analysisId);
+    await fs.promises.mkdir(tempDir, { recursive: true });
+    
+    const sourceFilePath = path.join(tempDir, 'source.cpp');
+    await fs.promises.writeFile(sourceFilePath, sourceCode);
+
+    // Generate unique container name
+    const containerName = `codeguard-analysis-${analysisId}`;
+
+    try {
+      // Run container with mounted source code
+      const containerProcess = spawn('docker', [
+        'run',
+        '--rm',
+        '--name', containerName,
+        '-v', `${sourceFilePath}:/app/source.cpp:ro`,
+        '-v', `${tempDir}:/app/results`,
+        '-e', `ANALYSIS_ID=${analysisId}`,
+        '-e', `SOURCE_FILE=/app/source.cpp`,
+        '-e', `OUTPUT_DIR=/app/results`,
+        this.CONTAINER_IMAGE
+      ], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      const containerId = containerName;
+      let stdout = '';
+      let stderr = '';
+
+      // Handle container output
+      containerProcess.stdout?.on('data', (data) => {
+        stdout += data.toString();
+        console.log(`[Container ${containerId}] ${data.toString().trim()}`);
+      });
+
+      containerProcess.stderr?.on('data', (data) => {
+        stderr += data.toString();
+        console.error(`[Container ${containerId}] ERROR: ${data.toString().trim()}`);
+      });
+
+      // Handle cancellation
+      cancellationToken.onCancel(() => {
+        console.log(`🛑 Cancelling container ${containerId}`);
+        this.stopContainer(containerId);
+      });
+
+      // Wait for container completion
+      const result = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.stopContainer(containerId);
+          reject(new Error('Container analysis timeout'));
+        }, this.CONTAINER_TIMEOUT);
+
+        containerProcess.on('close', async (code) => {
+          clearTimeout(timeout);
+          
+          if (code === 0) {
+            try {
+              // Read results from mounted volume
+              const resultsPath = path.join(tempDir, 'analysis_results.json');
+              const resultsContent = await fs.promises.readFile(resultsPath, 'utf-8');
+              const results = JSON.parse(resultsContent);
+              resolve(results);
+            } catch (error) {
+              reject(new Error(`Failed to read container results: ${error}`));
+            }
+          } else {
+            reject(new Error(`Container failed with code ${code}: ${stderr}`));
+          }
+        });
+
+        containerProcess.on('error', (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+      });
+
+      return { containerId, result };
+
+    } catch (error) {
+      // Cleanup on error
+      await this.stopContainer(containerName);
+      throw error;
+    } finally {
+      // Cleanup temporary files
+      try {
+        await fs.promises.rm(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        console.warn('Failed to cleanup temp directory:', error);
+      }
+    }
+  }
+
+  /**
+   * Stop a running container
+   */
+  static async stopContainer(containerId: string): Promise<void> {
+    try {
+      await execAsync(`docker stop ${containerId}`);
+      console.log(`🛑 Container ${containerId} stopped`);
+    } catch (error) {
+      console.warn(`Failed to stop container ${containerId}:`, error);
+    }
+  }
+
+  /**
+   * Get container logs
+   */
+  static async getContainerLogs(containerId: string): Promise<string> {
+    try {
+      const { stdout } = await execAsync(`docker logs ${containerId}`);
+      return stdout;
+    } catch (error) {
+      return `Failed to get logs: ${error}`;
+    }
   }
 }
 
@@ -155,7 +314,7 @@ export class AnalysisService {
           results: session.result,
           error: session.error,
           duration: Date.now() - session.startTime,
-          crashes: session.crashes  // NEW: Add crash count
+          crashes: session.crashes
         }
       : null;
   }
@@ -185,7 +344,13 @@ export class AnalysisService {
   ) {
     try {
       // Choose analysis mode based on environment
-      if (process.env.ANALYSIS_MODE === 'FUZZING') {
+      if (process.env.ANALYSIS_MODE === 'CONTAINER') {
+        return await this.executeContainerizedAnalysis(
+          analysisId,
+          filePath,
+          cancellationToken
+        );
+      } else if (process.env.ANALYSIS_MODE === 'FUZZING') {
         return await this.executeFuzzingAnalysis(
           analysisId,
           filePath,
@@ -203,15 +368,50 @@ export class AnalysisService {
           result: sarifData
         });
       }
-    } finally {
-      // Cleanup temp file regardless of outcome
-      if (process.env.NODE_ENV !== 'development') {
-        try {
-          await fs.promises.unlink(filePath);
-        } catch (error) {
-          console.error(`Temp file cleanup failed: ${error}`);
-        }
-      }
+    } catch (error) {
+      this.handleAnalysisError(analysisId, error);
+      throw error;
+    }
+  }
+
+  // NEW: Containerized analysis execution
+  private async executeContainerizedAnalysis(
+    analysisId: string,
+    filePath: string,
+    cancellationToken: CancellationToken
+  ) {
+    try {
+      this.updateSession(analysisId, { status: 'initializing' });
+      this.handleProgress(analysisId, 'Starting containerized analysis...');
+
+      // Read source code
+      const sourceCode = await fs.promises.readFile(filePath, 'utf-8');
+
+      // Run analysis in container
+      this.handleProgress(analysisId, 'Launching analysis container...');
+      const { containerId, result } = await ContainerManager.runAnalysisInContainer(
+        sourceCode,
+        analysisId,
+        cancellationToken
+      );
+
+      // Update session with container ID
+      this.updateSession(analysisId, { 
+        status: 'completed',
+        result,
+        containerId
+      });
+
+      this.handleProgress(analysisId, 'Containerized analysis completed successfully');
+      console.log(`✅ Containerized analysis completed for ${analysisId}`);
+
+    } catch (error) {
+      console.error(`❌ Containerized analysis failed for ${analysisId}:`, error);
+      this.updateSession(analysisId, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      throw error;
     }
   }
 

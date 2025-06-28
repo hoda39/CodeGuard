@@ -26,7 +26,8 @@ RUN apt-get update && apt-get install -y \
     libc6-dev \
     libssl-dev \
     pkg-config \
-    libtool \ 
+    libtool \
+    jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js
@@ -36,6 +37,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
 # Install Rust (required for CASR)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install .NET Core for Eclipser
+RUN wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
+    && dpkg -i packages-microsoft-prod.deb \
+    && rm packages-microsoft-prod.deb \
+    && apt-get update \
+    && apt-get install -y dotnet-sdk-6.0
 
 # Create working directory
 WORKDIR /app
@@ -79,6 +87,10 @@ COPY extension/src/api/ ./src/api/
 # Build the TypeScript code
 RUN npm run build || npx tsc
 
+# Copy the container entry point script
+COPY container-entrypoint.sh /app/container-entrypoint.sh
+RUN chmod +x /app/container-entrypoint.sh
+
 # Create necessary directories for analysis
 RUN mkdir -p /app/analysis-results \
     && mkdir -p /app/temp \
@@ -88,12 +100,18 @@ RUN mkdir -p /app/analysis-results \
 # Set permissions for fuzzing tools
 RUN chmod +x /usr/local/bin/* || true
 
-# Expose the API port
+# Set core pattern for better crash handling
+RUN echo core | tee /proc/sys/kernel/core_pattern || true
+
+# Expose the API port (for when running as API server)
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the analysis server
+# Default command for API server mode
 CMD ["node", "dist/server.js"]
+
+# Alternative entry point for analysis mode
+ENTRYPOINT ["/app/container-entrypoint.sh"]
