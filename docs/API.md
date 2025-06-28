@@ -1,814 +1,822 @@
-# CodeGuard API Reference
+# CodeGuard API Documentation
 
-This document provides comprehensive API reference for CodeGuard, including REST API endpoints, TypeScript interfaces, and integration examples.
+This document provides comprehensive API documentation for CodeGuard, covering both the VS Code extension API and the REST API endpoints for remote analysis services.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [REST API](#rest-api)
-- [TypeScript Interfaces](#typescript-interfaces)
+- [REST API Reference](#rest-api-reference)
 - [Extension API](#extension-api)
-- [Analysis Engine API](#analysis-engine-api)
+- [TypeScript Interfaces](#typescript-interfaces)
 - [Authentication](#authentication)
 - [Error Handling](#error-handling)
 - [Examples](#examples)
 
 ## Overview
 
-CodeGuard provides multiple API layers:
+CodeGuard provides two main API interfaces:
 
-1. **REST API**: HTTP endpoints for remote analysis and result management
-2. **Extension API**: VS Code extension integration interfaces
-3. **Analysis Engine API**: Core analysis functionality
-4. **TypeScript Interfaces**: Type definitions for all components
+1. **REST API**: For remote analysis services (static and dynamic analysis)
+2. **Extension API**: For VS Code extension integration and local analysis
 
-## REST API
+### Base URLs
 
-### Base URL
-```
-http://localhost:3000/api
-```
+- **Static Analysis API**: `http://localhost:5000` (containerized)
+- **Dynamic Analysis API**: `http://localhost:3000` (containerized)
+- **Local Extension API**: Available through VS Code extension host
+
+## REST API Reference
 
 ### Authentication
+
 All API endpoints require authentication using JWT tokens.
+
+#### Authentication Headers
 
 ```http
 Authorization: Bearer <jwt_token>
+Content-Type: application/json
 ```
 
-### Endpoints
+#### Get Authentication Token
 
-#### 1. Authentication
+```http
+POST /api/auth/login
+Content-Type: application/json
 
-##### POST /api/auth/register
-Register a new user account.
-
-**Request Body:**
-```json
 {
-  "username": "string",
-  "email": "string",
-  "password": "string"
+  "username": "your_username",
+  "password": "your_password"
 }
 ```
 
-**Response:**
+**Response**:
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
-  "data": {
-    "userId": "uuid",
-    "username": "string",
-    "email": "string",
-    "createdAt": "2024-01-01T00:00:00.000Z"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires": "2024-12-31T23:59:59Z",
+  "user": {
+    "id": "user123",
+    "username": "your_username",
+    "role": "developer"
   }
 }
 ```
 
-**Status Codes:**
-- `201`: User created successfully
-- `400`: Invalid input data
-- `409`: User already exists
+### Static Analysis API
 
-##### POST /api/auth/login
-Authenticate user and receive JWT token.
+#### Submit Code for Static Analysis
 
-**Request Body:**
-```json
+```http
+POST /api/analysis/static
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
 {
-  "email": "string",
-  "password": "string"
+  "code": "void vulnerable_function() { char* buffer = malloc(10); strcpy(buffer, \"too long\"); }",
+  "language": "cpp",
+  "options": {
+    "inferenceMode": "local",
+    "useCUDA": false,
+    "maxLines": 100
+  }
 }
 ```
 
-**Response:**
+**Response**:
 ```json
 {
-  "success": true,
-  "message": "Login successful",
-  "data": {
-    "token": "jwt_token",
-    "user": {
-      "id": "uuid",
-      "username": "string",
-      "email": "string"
+  "id": "analysis_123",
+  "status": "completed",
+  "vulnerabilities": [
+    {
+      "lineNumber": 1,
+      "cweId": "CWE-119",
+      "cweType": "Buffer Overflow",
+      "cweSummary": "Buffer overflow in strcpy operation",
+      "severityLevel": "High",
+      "severityScore": 0.85,
+      "confidenceScore": 0.92,
+      "description": "Potential buffer overflow detected in strcpy operation",
+      "remediation": "Use strncpy with proper bounds checking"
+    }
+  ],
+  "processingTime": 1.23,
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+#### Get Static Analysis Results
+
+```http
+GET /api/analysis/static/{analysis_id}
+Authorization: Bearer <jwt_token>
+```
+
+**Response**: Same as above
+
+#### Batch Static Analysis
+
+```http
+POST /api/analysis/static/batch
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "files": [
+    {
+      "name": "main.cpp",
+      "content": "void main() { ... }"
+    },
+    {
+      "name": "utils.cpp",
+      "content": "void utils() { ... }"
+    }
+  ],
+  "options": {
+    "inferenceMode": "remote",
+    "useCUDA": true
+  }
+}
+```
+
+### Dynamic Analysis API
+
+#### Submit Code for Fuzzing Analysis
+
+```http
+POST /api/analysis/dynamic
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "sourceCode": "void fuzz_target(char* input, size_t length) { char buffer[100]; if (length < 100) memcpy(buffer, input, length); }",
+  "fuzzingOptions": {
+    "timeout": 300,
+    "fuzzerType": "aflplusplus",
+    "sanitizers": ["address", "undefined", "leak"],
+    "maxMemory": "2GB",
+    "concolicExecution": true
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "id": "fuzzing_456",
+  "status": "completed",
+  "vulnerabilities": [
+    {
+      "lineNumber": 1,
+      "type": "Buffer Overflow",
+      "severity": "High",
+      "description": "Buffer overflow detected by AddressSanitizer",
+      "testCase": "input_123",
+      "stackTrace": "stack trace information",
+      "sanitizer": "AddressSanitizer"
+    }
+  ],
+  "testCases": [
+    {
+      "id": "input_123",
+      "input": "A" * 150,
+      "coverage": 0.85,
+      "crashType": "SIGSEGV",
+      "stackTrace": "detailed stack trace"
+    }
+  ],
+  "coverage": {
+    "lineCoverage": 0.75,
+    "branchCoverage": 0.60,
+    "functionCoverage": 0.90,
+    "uncoveredLines": [5, 8, 12]
+  },
+  "fuzzingStats": {
+    "totalExecutions": 10000,
+    "uniqueCrashes": 3,
+    "timeouts": 0,
+    "averageExecutionTime": 0.001
+  },
+  "processingTime": 180.5,
+  "timestamp": "2024-01-15T10:35:00Z"
+}
+```
+
+#### Get Dynamic Analysis Results
+
+```http
+GET /api/analysis/dynamic/{analysis_id}
+Authorization: Bearer <jwt_token>
+```
+
+**Response**: Same as above
+
+#### Get Fuzzing Statistics
+
+```http
+GET /api/analysis/dynamic/{analysis_id}/stats
+Authorization: Bearer <jwt_token>
+```
+
+**Response**:
+```json
+{
+  "executionStats": {
+    "totalExecutions": 10000,
+    "uniqueCrashes": 3,
+    "timeouts": 0,
+    "averageExecutionTime": 0.001
+  },
+  "coverageStats": {
+    "lineCoverage": 0.75,
+    "branchCoverage": 0.60,
+    "functionCoverage": 0.90
+  },
+  "sanitizerStats": {
+    "addressSanitizer": {
+      "errors": 2,
+      "types": ["buffer-overflow", "use-after-free"]
+    },
+    "undefinedBehaviorSanitizer": {
+      "errors": 1,
+      "types": ["integer-overflow"]
     }
   }
 }
 ```
 
-**Status Codes:**
-- `200`: Login successful
-- `401`: Invalid credentials
-- `400`: Invalid input data
+### Container Management API
 
-#### 2. Static Analysis
+#### Get Container Status
 
-##### POST /api/analysis/static
-Submit code for static analysis.
+```http
+GET /api/containers/status
+Authorization: Bearer <jwt_token>
+```
 
-**Request Body:**
+**Response**:
 ```json
 {
-  "code": "string",
-  "language": "cpp" | "c",
+  "staticAnalysis": {
+    "status": "running",
+    "url": "http://localhost:5000",
+    "health": "healthy",
+    "uptime": "2h 30m",
+    "version": "1.0.0"
+  },
+  "dynamicAnalysis": {
+    "status": "running",
+    "url": "http://localhost:3000",
+    "health": "healthy",
+    "uptime": "2h 30m",
+    "version": "1.0.0"
+  }
+}
+```
+
+#### Start Container
+
+```http
+POST /api/containers/start
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "service": "static-analysis",
   "options": {
-    "inferenceMode": "local" | "remote",
-    "useCUDA": boolean,
-    "maxLines": number,
-    "severityThreshold": "low" | "medium" | "high" | "critical"
+    "port": 5000,
+    "memory": "2GB",
+    "cpu": "2"
   }
 }
 ```
 
-**Response:**
+#### Stop Container
+
+```http
+POST /api/containers/stop
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "service": "static-analysis"
+}
+```
+
+#### Get Container Logs
+
+```http
+GET /api/containers/{service}/logs
+Authorization: Bearer <jwt_token>
+```
+
+**Response**:
 ```json
 {
-  "success": true,
-  "data": {
-    "analysisId": "uuid",
-    "status": "completed",
-    "results": [
-      {
-        "lineNumber": number,
-        "cweId": "string",
-        "cweType": "string",
-        "cweSummary": "string",
-        "severityLevel": "low" | "medium" | "high" | "critical",
-        "severityScore": number,
-        "confidenceScore": number,
-        "description": "string",
-        "remediation": "string"
-      }
-    ],
-    "summary": {
-      "totalIssues": number,
-      "criticalIssues": number,
-      "highIssues": number,
-      "mediumIssues": number,
-      "lowIssues": number
+  "logs": [
+    {
+      "timestamp": "2024-01-15T10:30:00Z",
+      "level": "INFO",
+      "message": "Static analysis service started"
     },
-    "processingTime": number,
-    "timestamp": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
-**Status Codes:**
-- `200`: Analysis completed successfully
-- `400`: Invalid input data
-- `500`: Analysis failed
-
-##### GET /api/analysis/static/:id
-Retrieve static analysis results by ID.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "analysisId": "uuid",
-    "status": "completed" | "processing" | "failed",
-    "results": [...],
-    "summary": {...},
-    "processingTime": number,
-    "timestamp": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
-#### 3. Dynamic Analysis
-
-##### POST /api/analysis/dynamic
-Submit code for dynamic analysis.
-
-**Request Body:**
-```json
-{
-  "sourceCode": "string",
-  "language": "cpp" | "c",
-  "compilerFlags": ["string"],
-  "checkers": ["memory_leak", "use_after_free", "double_free"],
-  "options": {
-    "timeout": number,
-    "outputFormat": "sarif" | "json",
-    "enableASan": boolean
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "analysisId": "uuid",
-    "status": "completed",
-    "results": [
-      {
-        "ruleId": "string",
-        "level": "error" | "warning" | "info",
-        "message": {
-          "text": "string"
-        },
-        "locations": [
-          {
-            "physicalLocation": {
-              "artifactLocation": {
-                "uri": "string"
-              },
-              "region": {
-                "startLine": number,
-                "startColumn": number,
-                "endLine": number,
-                "endColumn": number
-              }
-            }
-          }
-        ],
-        "properties": {
-          "cweId": "string",
-          "severity": "string",
-          "confidence": number
-        }
-      }
-    ],
-    "sarifReport": "string",
-    "summary": {
-      "totalIssues": number,
-      "criticalIssues": number,
-      "highIssues": number,
-      "mediumIssues": number,
-      "lowIssues": number
-    },
-    "processingTime": number,
-    "timestamp": "2024-01-01T00:00:00.000Z"
-  }
-}
-```
-
-##### GET /api/analysis/dynamic/:id
-Retrieve dynamic analysis results by ID.
-
-#### 4. Results Management
-
-##### GET /api/results
-List all analysis results for the authenticated user.
-
-**Query Parameters:**
-- `type`: `static` | `dynamic` | `all`
-- `status`: `completed` | `processing` | `failed`
-- `limit`: number (default: 50)
-- `offset`: number (default: 0)
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "results": [
-      {
-        "id": "uuid",
-        "type": "static" | "dynamic",
-        "status": "completed" | "processing" | "failed",
-        "summary": {...},
-        "timestamp": "2024-01-01T00:00:00.000Z"
-      }
-    ],
-    "pagination": {
-      "total": number,
-      "limit": number,
-      "offset": number,
-      "hasMore": boolean
+    {
+      "timestamp": "2024-01-15T10:30:05Z",
+      "level": "INFO",
+      "message": "ML models loaded successfully"
     }
-  }
+  ]
 }
 ```
 
-##### DELETE /api/results/:id
-Delete analysis result by ID.
+### Health Check API
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Result deleted successfully"
-}
+#### Service Health Check
+
+```http
+GET /api/health
 ```
 
-#### 5. Health and Status
-
-##### GET /api/health
-Check API health status.
-
-**Response:**
+**Response**:
 ```json
 {
   "status": "healthy",
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "version": "1.0.0",
+  "timestamp": "2024-01-15T10:30:00Z",
   "services": {
-    "database": "healthy",
-    "analysis": "healthy",
-    "ml": "healthy"
-  }
+    "staticAnalysis": "healthy",
+    "dynamicAnalysis": "healthy",
+    "database": "healthy"
+  },
+  "version": "1.0.0"
 }
 ```
 
-##### GET /api/status
-Get detailed system status.
+#### Detailed Health Check
 
-**Response:**
+```http
+GET /api/health/detailed
+Authorization: Bearer <jwt_token>
+```
+
+**Response**:
 ```json
 {
-  "status": "operational",
-  "uptime": number,
-  "memory": {
-    "used": number,
-    "total": number,
-    "percentage": number
+  "status": "healthy",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "services": {
+    "staticAnalysis": {
+      "status": "healthy",
+      "responseTime": 0.05,
+      "memoryUsage": "512MB",
+      "cpuUsage": "15%"
+    },
+    "dynamicAnalysis": {
+      "status": "healthy",
+      "responseTime": 0.08,
+      "memoryUsage": "1GB",
+      "cpuUsage": "25%"
+    }
   },
-  "cpu": {
-    "usage": number,
-    "cores": number
-  },
-  "activeAnalyses": number,
-  "queueLength": number
-}
-```
-
-## TypeScript Interfaces
-
-### Core Types
-
-```typescript
-// Analysis Types
-export type AnalysisType = 'static' | 'dynamic';
-export type AnalysisStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type SeverityLevel = 'low' | 'medium' | 'high' | 'critical';
-export type Language = 'cpp' | 'c';
-
-// Vulnerability Types
-export interface VulnerabilityResult {
-  id: string;
-  lineNumber: number;
-  columnNumber?: number;
-  cweId: string;
-  cweType: string;
-  cweSummary: string;
-  severityLevel: SeverityLevel;
-  severityScore: number;
-  confidenceScore: number;
-  description: string;
-  remediation?: string;
-  source: AnalysisType;
-  tool: string;
-  timestamp: Date;
-}
-
-// Analysis Results
-export interface AnalysisResult {
-  id: string;
-  type: AnalysisType;
-  status: AnalysisStatus;
-  results: VulnerabilityResult[];
-  summary: AnalysisSummary;
-  processingTime: number;
-  timestamp: Date;
-  metadata?: Record<string, any>;
-}
-
-export interface AnalysisSummary {
-  totalIssues: number;
-  criticalIssues: number;
-  highIssues: number;
-  mediumIssues: number;
-  lowIssues: number;
-}
-
-// Configuration Types
-export interface AnalysisConfig {
-  static: StaticAnalysisConfig;
-  dynamic: DynamicAnalysisConfig;
-  general: GeneralConfig;
-}
-
-export interface StaticAnalysisConfig {
-  inferenceMode: 'local' | 'remote';
-  useCUDA: boolean;
-  delayBeforeAnalysis: number;
-  maxNumberOfLines: number;
-  severityThreshold: SeverityLevel;
-}
-
-export interface DynamicAnalysisConfig {
-  enableASan: boolean;
-  customCheckers: string[];
-  outputFormat: 'sarif' | 'json';
-  timeout: number;
-  compilerFlags: string[];
-}
-
-export interface GeneralConfig {
-  enableRealTimeAnalysis: boolean;
-  sarifOutputPath: string;
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
-}
-```
-
-### API Client Types
-
-```typescript
-// API Client Interface
-export interface CodeGuardAPIClient {
-  // Authentication
-  register(userData: RegisterRequest): Promise<RegisterResponse>;
-  login(credentials: LoginRequest): Promise<LoginResponse>;
-  
-  // Analysis
-  runStaticAnalysis(request: StaticAnalysisRequest): Promise<AnalysisResult>;
-  runDynamicAnalysis(request: DynamicAnalysisRequest): Promise<AnalysisResult>;
-  
-  // Results
-  getAnalysisResult(id: string): Promise<AnalysisResult>;
-  listResults(filters?: ResultFilters): Promise<PaginatedResults>;
-  deleteResult(id: string): Promise<void>;
-  
-  // System
-  getHealth(): Promise<HealthStatus>;
-  getStatus(): Promise<SystemStatus>;
-}
-
-// Request/Response Types
-export interface RegisterRequest {
-  username: string;
-  email: string;
-  password: string;
-}
-
-export interface RegisterResponse {
-  success: boolean;
-  message: string;
-  data: {
-    userId: string;
-    username: string;
-    email: string;
-    createdAt: Date;
-  };
-}
-
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  success: boolean;
-  message: string;
-  data: {
-    token: string;
-    user: {
-      id: string;
-      username: string;
-      email: string;
-    };
-  };
-}
-
-export interface StaticAnalysisRequest {
-  code: string;
-  language: Language;
-  options?: Partial<StaticAnalysisConfig>;
-}
-
-export interface DynamicAnalysisRequest {
-  sourceCode: string;
-  language: Language;
-  compilerFlags?: string[];
-  checkers?: string[];
-  options?: Partial<DynamicAnalysisConfig>;
-}
-
-export interface ResultFilters {
-  type?: AnalysisType;
-  status?: AnalysisStatus;
-  limit?: number;
-  offset?: number;
-}
-
-export interface PaginatedResults {
-  results: AnalysisResult[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-    hasMore: boolean;
-  };
+  "system": {
+    "uptime": "2h 30m",
+    "totalMemory": "8GB",
+    "availableMemory": "6GB",
+    "cpuLoad": "30%"
+  }
 }
 ```
 
 ## Extension API
 
-### VS Code Extension Integration
+### VS Code Extension API
+
+The CodeGuard extension provides APIs for integration with VS Code.
+
+#### Register Analysis Provider
 
 ```typescript
-// Extension Activation
-export function activate(context: vscode.ExtensionContext): void {
-  // Register commands
-  const runAnalysisCommand = vscode.commands.registerCommand(
-    'secure-code-analyzer.runAnalysis',
-    runDynamicAnalysis
-  );
-  
-  const cancelAnalysisCommand = vscode.commands.registerCommand(
-    'secure-code-analyzer.cancelAnalysis',
-    cancelAnalysis
-  );
-  
-  context.subscriptions.push(runAnalysisCommand, cancelAnalysisCommand);
-  
-  // Register diagnostics collection
-  const diagnosticsCollection = vscode.languages.createDiagnosticCollection('codeguard');
-  context.subscriptions.push(diagnosticsCollection);
-  
-  // Set up file change listeners
-  const fileChangeListener = vscode.workspace.onDidChangeTextDocument(
-    handleFileChange
-  );
-  context.subscriptions.push(fileChangeListener);
-}
+import * as vscode from 'vscode';
+import { CodeGuardProvider } from './codeguard-provider';
 
-// Analysis Functions
-async function runDynamicAnalysis(): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showErrorMessage('No active editor');
-    return;
-  }
-  
-  const document = editor.document;
-  if (document.languageId !== 'cpp' && document.languageId !== 'c') {
-    vscode.window.showErrorMessage('Only C/C++ files are supported');
-    return;
-  }
-  
-  try {
-    vscode.window.showInformationMessage('Starting dynamic analysis...');
+export function activate(context: vscode.ExtensionContext) {
+    const provider = new CodeGuardProvider();
     
-    const result = await apiClient.runDynamicAnalysis({
-      sourceCode: document.getText(),
-      language: document.languageId as Language,
-      options: {
-        timeout: 30000,
-        outputFormat: 'sarif'
-      }
-    });
-    
-    displayResults(result);
-  } catch (error) {
-    vscode.window.showErrorMessage(`Analysis failed: ${error.message}`);
-  }
-}
-
-// Diagnostics Display
-function displayResults(result: AnalysisResult): void {
-  const diagnostics: vscode.Diagnostic[] = [];
-  
-  result.results.forEach(vulnerability => {
-    const range = new vscode.Range(
-      vulnerability.lineNumber - 1,
-      vulnerability.columnNumber || 0,
-      vulnerability.lineNumber - 1,
-      vulnerability.columnNumber || 1000
+    // Register static analysis provider
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider(
+            { language: 'cpp' },
+            provider,
+            {
+                providedCodeActionKinds: [
+                    vscode.CodeActionKind.QuickFix
+                ]
+            }
+        )
     );
-    
-    const diagnostic = new vscode.Diagnostic(
-      range,
-      `${vulnerability.cweType}: ${vulnerability.description}`,
-      getSeverity(vulnerability.severityLevel)
-    );
-    
-    diagnostic.source = 'CodeGuard';
-    diagnostic.code = vulnerability.cweId;
-    
-    diagnostics.push(diagnostic);
-  });
-  
-  diagnosticsCollection.set(vscode.Uri.file(document.fileName), diagnostics);
-}
-
-// Utility Functions
-function getSeverity(level: SeverityLevel): vscode.DiagnosticSeverity {
-  switch (level) {
-    case 'critical':
-    case 'high':
-      return vscode.DiagnosticSeverity.Error;
-    case 'medium':
-      return vscode.DiagnosticSeverity.Warning;
-    case 'low':
-      return vscode.DiagnosticSeverity.Information;
-    default:
-      return vscode.DiagnosticSeverity.Hint;
-  }
 }
 ```
 
-## Analysis Engine API
-
-### Core Analysis Engine
+#### Analysis Provider Implementation
 
 ```typescript
-// Analysis Engine Interface
-export interface AnalysisEngine {
-  // Static Analysis
-  runStaticAnalysis(config: StaticAnalysisConfig): Promise<StaticAnalysisResult>;
-  
-  // Dynamic Analysis
-  runDynamicAnalysis(config: DynamicAnalysisConfig): Promise<DynamicAnalysisResult>;
-  
-  // Utility
-  validateConfig(config: AnalysisConfig): ValidationResult;
-  getSupportedLanguages(): Language[];
-  getSupportedCheckers(): string[];
-}
-
-// Analysis Engine Implementation
-export class CodeGuardAnalysisEngine implements AnalysisEngine {
-  private staticAnalysisEngine: StaticAnalysisEngine;
-  private dynamicAnalysisEngine: DynamicAnalysisEngine;
-  
-  constructor(config: AnalysisConfig) {
-    this.staticAnalysisEngine = new StaticAnalysisEngine(config.static);
-    this.dynamicAnalysisEngine = new DynamicAnalysisEngine(config.dynamic);
-  }
-  
-  async runStaticAnalysis(config: StaticAnalysisConfig): Promise<StaticAnalysisResult> {
-    return this.staticAnalysisEngine.analyze(config);
-  }
-  
-  async runDynamicAnalysis(config: DynamicAnalysisConfig): Promise<DynamicAnalysisResult> {
-    return this.dynamicAnalysisEngine.analyze(config);
-  }
-  
-  validateConfig(config: AnalysisConfig): ValidationResult {
-    const errors: string[] = [];
-    
-    // Validate static analysis config
-    if (config.static.inferenceMode === 'remote' && !config.static.serverUrl) {
-      errors.push('Remote inference mode requires server URL');
+export class CodeGuardProvider implements vscode.CodeActionProvider {
+    provideCodeActions(
+        document: vscode.TextDocument,
+        range: vscode.Range | vscode.Selection,
+        context: vscode.CodeActionContext,
+        token: vscode.CancellationToken
+    ): vscode.ProviderResult<vscode.CodeAction[]> {
+        const actions: vscode.CodeAction[] = [];
+        
+        // Add quick fix actions for vulnerabilities
+        context.diagnostics.forEach(diagnostic => {
+            if (diagnostic.source === 'CodeGuard') {
+                const action = this.createQuickFix(diagnostic);
+                if (action) {
+                    actions.push(action);
+                }
+            }
+        });
+        
+        return actions;
     }
     
-    // Validate dynamic analysis config
-    if (config.dynamic.timeout <= 0) {
-      errors.push('Timeout must be positive');
+    private createQuickFix(diagnostic: vscode.Diagnostic): vscode.CodeAction | undefined {
+        // Implementation for creating quick fixes
     }
-    
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  }
-  
-  getSupportedLanguages(): Language[] {
-    return ['cpp', 'c'];
-  }
-  
-  getSupportedCheckers(): string[] {
-    return [
-      'memory_leak',
-      'use_after_free',
-      'double_free',
-      'heap_overflow',
-      'stack_overflow',
-      'use_after_return'
-    ];
-  }
 }
 ```
 
-### Vulnerability Checkers
+#### Command Registration
 
 ```typescript
-// Checker Interface
-export interface VulnerabilityChecker {
-  name: string;
-  description: string;
-  supportedLanguages: Language[];
-  
-  check(code: string, config: CheckerConfig): Promise<CheckerResult>;
+// Register commands
+context.subscriptions.push(
+    vscode.commands.registerCommand('codeguard.runStaticAnalysis', () => {
+        // Run static analysis
+    }),
+    
+    vscode.commands.registerCommand('codeguard.runDynamicAnalysis', () => {
+        // Run dynamic analysis
+    }),
+    
+    vscode.commands.registerCommand('codeguard.showResults', () => {
+        // Show analysis results
+    })
+);
+```
+
+### Analysis Engine API
+
+#### Static Analysis Engine
+
+```typescript
+export class StaticAnalysisEngine {
+    constructor(private config: StaticAnalysisConfig) {}
+    
+    async analyzeCode(
+        code: string,
+        language: 'cpp' | 'c',
+        options?: AnalysisOptions
+    ): Promise<VulnerabilityResult[]> {
+        // Implementation for static analysis
+    }
+    
+    async analyzeFile(
+        filePath: string,
+        options?: AnalysisOptions
+    ): Promise<VulnerabilityResult[]> {
+        // Implementation for file analysis
+    }
+    
+    async analyzeBatch(
+        files: string[],
+        options?: AnalysisOptions
+    ): Promise<BatchAnalysisResult> {
+        // Implementation for batch analysis
+    }
+}
+```
+
+#### Dynamic Analysis Engine
+
+```typescript
+export class DynamicAnalysisEngine {
+    constructor(private config: DynamicAnalysisConfig) {}
+    
+    async runFuzzingAnalysis(
+        sourceCode: string,
+        options: FuzzingOptions
+    ): Promise<FuzzingResult> {
+        // Implementation for fuzzing analysis
+    }
+    
+    async runConcolicExecution(
+        sourceCode: string,
+        options: ConcolicOptions
+    ): Promise<ConcolicResult> {
+        // Implementation for concolic execution
+    }
+    
+    async runSanitizerAnalysis(
+        sourceCode: string,
+        sanitizers: string[]
+    ): Promise<SanitizerResult> {
+        // Implementation for sanitizer analysis
+    }
+}
+```
+
+## TypeScript Interfaces
+
+### Core Interfaces
+
+```typescript
+// Vulnerability result interface
+interface VulnerabilityResult {
+    id: string;
+    lineNumber: number;
+    columnNumber?: number;
+    cweId: string;
+    cweType: string;
+    cweSummary: string;
+    severityLevel: 'Low' | 'Medium' | 'High' | 'Critical';
+    severityScore: number;
+    confidenceScore: number;
+    description: string;
+    remediation?: string;
+    source: 'static' | 'dynamic';
+    tool: string;
+    timestamp: Date;
 }
 
-// Checker Implementation Example
-export class MemoryLeakChecker implements VulnerabilityChecker {
-  name = 'memory_leak';
-  description = 'Detects unreleased allocated memory';
-  supportedLanguages = ['cpp', 'c'];
-  
-  async check(code: string, config: CheckerConfig): Promise<CheckerResult> {
-    const results: VulnerabilityResult[] = [];
-    
-    // Parse code and identify potential memory leaks
-    const ast = this.parseCode(code);
-    const allocations = this.findMemoryAllocations(ast);
-    const deallocations = this.findMemoryDeallocations(ast);
-    
-    // Find leaks (allocations without corresponding deallocations)
-    const leaks = this.identifyLeaks(allocations, deallocations);
-    
-    leaks.forEach(leak => {
-      results.push({
-        id: generateId(),
-        lineNumber: leak.line,
-        cweId: 'CWE-401',
-        cweType: 'Memory Leak',
-        cweSummary: 'Memory allocated but not released',
-        severityLevel: 'medium',
-        severityScore: 0.7,
-        confidenceScore: 0.8,
-        description: `Memory allocated at line ${leak.line} is not released`,
-        remediation: 'Add appropriate free() or delete statement',
-        source: 'dynamic',
-        tool: this.name,
-        timestamp: new Date()
-      });
-    });
-    
-    return {
-      checker: this.name,
-      results,
-      processingTime: Date.now() - config.startTime
+// Static analysis result interface
+interface StaticAnalysisResult {
+    id: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    vulnerabilities: VulnerabilityResult[];
+    processingTime: number;
+    timestamp: Date;
+    metadata?: {
+        modelVersion: string;
+        inferenceMode: 'local' | 'remote';
+        useCUDA: boolean;
     };
-  }
-  
-  private parseCode(code: string): any {
-    // Implementation for parsing C/C++ code
-  }
-  
-  private findMemoryAllocations(ast: any): any[] {
-    // Implementation for finding malloc/new calls
-  }
-  
-  private findMemoryDeallocations(ast: any): any[] {
-    // Implementation for finding free/delete calls
-  }
-  
-  private identifyLeaks(allocations: any[], deallocations: any[]): any[] {
-    // Implementation for identifying memory leaks
-  }
+}
+
+// Fuzzing result interface
+interface FuzzingResult {
+    id: string;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    vulnerabilities: VulnerabilityResult[];
+    testCases: TestCase[];
+    coverage: CoverageInfo;
+    fuzzingStats: FuzzingStats;
+    processingTime: number;
+    timestamp: Date;
+}
+
+// Test case interface
+interface TestCase {
+    id: string;
+    input: string;
+    coverage: number;
+    crashType?: string;
+    stackTrace?: string;
+    sanitizerOutput?: string;
+}
+
+// Coverage information interface
+interface CoverageInfo {
+    lineCoverage: number;
+    branchCoverage: number;
+    functionCoverage: number;
+    uncoveredLines: number[];
+    coveredLines: number[];
+}
+
+// Fuzzing statistics interface
+interface FuzzingStats {
+    totalExecutions: number;
+    uniqueCrashes: number;
+    timeouts: number;
+    averageExecutionTime: number;
+    executionRate: number;
+}
+
+// Configuration interfaces
+interface StaticAnalysisConfig {
+    inferenceMode: 'local' | 'remote';
+    useCUDA: boolean;
+    delayBeforeAnalysis: number;
+    maxNumberOfLines: number;
+    apiUrl?: string;
+}
+
+interface DynamicAnalysisConfig {
+    apiUrl: string;
+    fuzzingTimeout: number;
+    fuzzerType: 'aflplusplus' | 'eclipser';
+    sanitizers: string[];
+    maxMemory: string;
+    enableConcolicExecution: boolean;
+}
+
+interface ContainerConfig {
+    useContainers: boolean;
+    staticAnalysisUrl: string;
+    dynamicAnalysisUrl: string;
+    autoStart: boolean;
+    dockerComposePath?: string;
+}
+
+// Analysis options interfaces
+interface AnalysisOptions {
+    inferenceMode?: 'local' | 'remote';
+    useCUDA?: boolean;
+    maxLines?: number;
+    timeout?: number;
+}
+
+interface FuzzingOptions {
+    timeout: number;
+    fuzzerType: 'aflplusplus' | 'eclipser';
+    sanitizers: string[];
+    maxMemory: string;
+    concolicExecution: boolean;
+    seedInputs?: string[];
+}
+
+interface ConcolicOptions {
+    timeout: number;
+    maxDepth: number;
+    maxPaths: number;
+    symbolicVariables: string[];
+}
+```
+
+### API Request/Response Interfaces
+
+```typescript
+// API request interfaces
+interface StaticAnalysisRequest {
+    code: string;
+    language: 'cpp' | 'c';
+    options?: AnalysisOptions;
+}
+
+interface DynamicAnalysisRequest {
+    sourceCode: string;
+    fuzzingOptions: FuzzingOptions;
+}
+
+interface BatchAnalysisRequest {
+    files: Array<{
+        name: string;
+        content: string;
+    }>;
+    options?: AnalysisOptions;
+}
+
+// API response interfaces
+interface ApiResponse<T> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    message?: string;
+    timestamp: Date;
+}
+
+interface ContainerStatusResponse {
+    staticAnalysis: ContainerInfo;
+    dynamicAnalysis: ContainerInfo;
+}
+
+interface ContainerInfo {
+    status: 'running' | 'stopped' | 'error';
+    url: string;
+    health: 'healthy' | 'unhealthy' | 'unknown';
+    uptime: string;
+    version: string;
+}
+
+interface HealthResponse {
+    status: 'healthy' | 'unhealthy';
+    timestamp: Date;
+    services: Record<string, string | ServiceHealth>;
+    version: string;
+}
+
+interface ServiceHealth {
+    status: 'healthy' | 'unhealthy';
+    responseTime: number;
+    memoryUsage: string;
+    cpuUsage: string;
 }
 ```
 
 ## Authentication
 
-### JWT Authentication
+### JWT Token Management
 
 ```typescript
-// JWT Service
-export class JWTAuthService {
-  private secret: string;
-  private expiresIn: string;
-  
-  constructor(secret: string, expiresIn: string = '24h') {
-    this.secret = secret;
-    this.expiresIn = expiresIn;
-  }
-  
-  generateToken(payload: TokenPayload): string {
-    return jwt.sign(payload, this.secret, { expiresIn: this.expiresIn });
-  }
-  
-  verifyToken(token: string): TokenPayload {
-    try {
-      return jwt.verify(token, this.secret) as TokenPayload;
-    } catch (error) {
-      throw new Error('Invalid token');
+export class AuthManager {
+    private token: string | null = null;
+    private tokenExpiry: Date | null = null;
+    
+    async authenticate(username: string, password: string): Promise<boolean> {
+        try {
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, password })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.token = data.token;
+                this.tokenExpiry = new Date(data.expires);
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            console.error('Authentication failed:', error);
+            return false;
+        }
     }
-  }
-  
-  decodeToken(token: string): TokenPayload {
-    return jwt.decode(token) as TokenPayload;
-  }
+    
+    getAuthHeaders(): Record<string, string> {
+        if (!this.token || this.isTokenExpired()) {
+            throw new Error('No valid authentication token');
+        }
+        
+        return {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
+        };
+    }
+    
+    private isTokenExpired(): boolean {
+        return this.tokenExpiry ? this.tokenExpiry <= new Date() : true;
+    }
+    
+    logout(): void {
+        this.token = null;
+        this.tokenExpiry = null;
+    }
 }
+```
 
-// Authentication Middleware
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'No token provided' });
-    return;
-  }
-  
-  const token = authHeader.substring(7);
-  
-  try {
-    const payload = jwtAuthService.verifyToken(token);
-    req.user = payload;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
+### API Client with Authentication
+
+```typescript
+export class CodeGuardApiClient {
+    constructor(
+        private baseUrl: string,
+        private authManager: AuthManager
+    ) {}
+    
+    async request<T>(
+        endpoint: string,
+        options: RequestInit = {}
+    ): Promise<T> {
+        const headers = {
+            ...this.authManager.getAuthHeaders(),
+            ...options.headers
+        };
+        
+        const response = await fetch(`${this.baseUrl}${endpoint}`, {
+            ...options,
+            headers
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API request failed: ${response.statusText}`);
+        }
+        
+        return response.json();
+    }
+    
+    async runStaticAnalysis(request: StaticAnalysisRequest): Promise<StaticAnalysisResult> {
+        return this.request<StaticAnalysisResult>('/api/analysis/static', {
+            method: 'POST',
+            body: JSON.stringify(request)
+        });
+    }
+    
+    async runDynamicAnalysis(request: DynamicAnalysisRequest): Promise<FuzzingResult> {
+        return this.request<FuzzingResult>('/api/analysis/dynamic', {
+            method: 'POST',
+            body: JSON.stringify(request)
+        });
+    }
+    
+    async getAnalysisResults(analysisId: string): Promise<StaticAnalysisResult | FuzzingResult> {
+        return this.request(`/api/analysis/${analysisId}`);
+    }
 }
 ```
 
@@ -817,278 +825,342 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 ### Error Types
 
 ```typescript
-// Custom Error Classes
+export enum CodeGuardErrorType {
+    AUTHENTICATION_FAILED = 'AUTHENTICATION_FAILED',
+    INVALID_REQUEST = 'INVALID_REQUEST',
+    ANALYSIS_FAILED = 'ANALYSIS_FAILED',
+    TIMEOUT = 'TIMEOUT',
+    CONTAINER_ERROR = 'CONTAINER_ERROR',
+    NETWORK_ERROR = 'NETWORK_ERROR',
+    UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+
 export class CodeGuardError extends Error {
-  constructor(
-    message: string,
-    public code: string,
-    public statusCode: number = 500
-  ) {
-    super(message);
-    this.name = 'CodeGuardError';
-  }
+    constructor(
+        public type: CodeGuardErrorType,
+        message: string,
+        public statusCode?: number,
+        public details?: any
+    ) {
+        super(message);
+        this.name = 'CodeGuardError';
+    }
 }
+```
 
-export class AnalysisError extends CodeGuardError {
-  constructor(message: string, public analysisId?: string) {
-    super(message, 'ANALYSIS_ERROR', 500);
-    this.name = 'AnalysisError';
-  }
-}
+### Error Handling Utilities
 
-export class ValidationError extends CodeGuardError {
-  constructor(message: string, public field?: string) {
-    super(message, 'VALIDATION_ERROR', 400);
-    this.name = 'ValidationError';
-  }
-}
-
-export class AuthenticationError extends CodeGuardError {
-  constructor(message: string = 'Authentication failed') {
-    super(message, 'AUTHENTICATION_ERROR', 401);
-    this.name = 'AuthenticationError';
-  }
-}
-
-// Error Handler
-export function errorHandler(
-  error: Error,
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void {
-  if (error instanceof CodeGuardError) {
-    res.status(error.statusCode).json({
-      success: false,
-      error: {
-        code: error.code,
-        message: error.message
-      }
-    });
-  } else {
-    console.error('Unhandled error:', error);
-    res.status(500).json({
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Internal server error'
-      }
-    });
-  }
+```typescript
+export class ErrorHandler {
+    static handleApiError(error: any): CodeGuardError {
+        if (error instanceof CodeGuardError) {
+            return error;
+        }
+        
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            return new CodeGuardError(
+                CodeGuardErrorType.NETWORK_ERROR,
+                'Network connection failed',
+                0,
+                error
+            );
+        }
+        
+        if (error.status === 401) {
+            return new CodeGuardError(
+                CodeGuardErrorType.AUTHENTICATION_FAILED,
+                'Authentication failed',
+                401,
+                error
+            );
+        }
+        
+        if (error.status === 400) {
+            return new CodeGuardError(
+                CodeGuardErrorType.INVALID_REQUEST,
+                'Invalid request parameters',
+                400,
+                error
+            );
+        }
+        
+        if (error.status === 408 || error.message.includes('timeout')) {
+            return new CodeGuardError(
+                CodeGuardErrorType.TIMEOUT,
+                'Request timed out',
+                408,
+                error
+            );
+        }
+        
+        return new CodeGuardError(
+            CodeGuardErrorType.UNKNOWN_ERROR,
+            'An unexpected error occurred',
+            error.status,
+            error
+        );
+    }
+    
+    static async retryWithBackoff<T>(
+        operation: () => Promise<T>,
+        maxRetries: number = 3,
+        baseDelay: number = 1000
+    ): Promise<T> {
+        let lastError: Error;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                lastError = error;
+                
+                if (attempt === maxRetries) {
+                    throw error;
+                }
+                
+                const delay = baseDelay * Math.pow(2, attempt);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        
+        throw lastError!;
+    }
 }
 ```
 
 ## Examples
 
-### Complete Analysis Workflow
+### Complete Static Analysis Example
 
 ```typescript
-// Example: Complete analysis workflow
-async function runCompleteAnalysis(sourceCode: string): Promise<AnalysisResult[]> {
-  const apiClient = new CodeGuardAPIClient('http://localhost:3000');
-  
-  try {
-    // Login
-    const loginResponse = await apiClient.login({
-      email: 'user@example.com',
-      password: 'password'
-    });
-    
-    apiClient.setToken(loginResponse.data.token);
-    
-    // Run static analysis
-    const staticResult = await apiClient.runStaticAnalysis({
-      code: sourceCode,
-      language: 'cpp',
-      options: {
-        inferenceMode: 'local',
-        useCUDA: false,
-        severityThreshold: 'medium'
-      }
-    });
-    
-    // Run dynamic analysis
-    const dynamicResult = await apiClient.runDynamicAnalysis({
-      sourceCode,
-      language: 'cpp',
-      compilerFlags: ['-fsanitize=address', '-g'],
-      checkers: ['memory_leak', 'use_after_free'],
-      options: {
-        timeout: 30000,
-        outputFormat: 'sarif'
-      }
-    });
-    
-    return [staticResult, dynamicResult];
-  } catch (error) {
-    console.error('Analysis failed:', error);
-    throw error;
-  }
-}
+import { CodeGuardApiClient, AuthManager } from './codeguard-api';
 
-// Example: VS Code extension integration
-export class CodeGuardExtension {
-  private apiClient: CodeGuardAPIClient;
-  private diagnosticsCollection: vscode.DiagnosticCollection;
-  
-  constructor() {
-    this.apiClient = new CodeGuardAPIClient('http://localhost:3000');
-    this.diagnosticsCollection = vscode.languages.createDiagnosticCollection('codeguard');
-  }
-  
-  async analyzeDocument(document: vscode.TextDocument): Promise<void> {
-    if (document.languageId !== 'cpp' && document.languageId !== 'c') {
-      return;
+async function runStaticAnalysis() {
+    // Initialize authentication
+    const authManager = new AuthManager();
+    const authenticated = await authManager.authenticate('username', 'password');
+    
+    if (!authenticated) {
+        throw new Error('Authentication failed');
     }
+    
+    // Initialize API client
+    const client = new CodeGuardApiClient('http://localhost:5000', authManager);
+    
+    // Prepare analysis request
+    const request: StaticAnalysisRequest = {
+        code: `
+            void vulnerable_function() {
+                char* buffer = (char*)malloc(10);
+                strcpy(buffer, "This string is too long for the buffer");
+                free(buffer);
+                free(buffer);
+            }
+        `,
+        language: 'cpp',
+        options: {
+            inferenceMode: 'local',
+            useCUDA: false,
+            maxLines: 100
+        }
+    };
     
     try {
-      const results = await runCompleteAnalysis(document.getText());
-      
-      // Display results
-      this.displayResults(document, results);
-      
-      // Show summary
-      this.showSummary(results);
-    } catch (error) {
-      vscode.window.showErrorMessage(`Analysis failed: ${error.message}`);
-    }
-  }
-  
-  private displayResults(document: vscode.TextDocument, results: AnalysisResult[]): void {
-    const diagnostics: vscode.Diagnostic[] = [];
-    
-    results.forEach(result => {
-      result.results.forEach(vulnerability => {
-        const range = new vscode.Range(
-          vulnerability.lineNumber - 1,
-          vulnerability.columnNumber || 0,
-          vulnerability.lineNumber - 1,
-          vulnerability.columnNumber || 1000
-        );
+        // Run analysis
+        const result = await client.runStaticAnalysis(request);
         
-        const diagnostic = new vscode.Diagnostic(
-          range,
-          `${vulnerability.cweType}: ${vulnerability.description}`,
-          this.getSeverity(vulnerability.severityLevel)
-        );
+        // Process results
+        console.log(`Analysis completed in ${result.processingTime}ms`);
+        console.log(`Found ${result.vulnerabilities.length} vulnerabilities`);
         
-        diagnostic.source = 'CodeGuard';
-        diagnostic.code = vulnerability.cweId;
-        
-        if (vulnerability.remediation) {
-          diagnostic.relatedInformation = [
-            new vscode.DiagnosticRelatedInformation(
-              new vscode.Location(document.uri, range),
-              `Fix: ${vulnerability.remediation}`
-            )
-          ];
-        }
-        
-        diagnostics.push(diagnostic);
-      });
-    });
-    
-    this.diagnosticsCollection.set(document.uri, diagnostics);
-  }
-  
-  private showSummary(results: AnalysisResult[]): void {
-    const totalIssues = results.reduce((sum, result) => sum + result.summary.totalIssues, 0);
-    const criticalIssues = results.reduce((sum, result) => sum + result.summary.criticalIssues, 0);
-    
-    if (criticalIssues > 0) {
-      vscode.window.showWarningMessage(
-        `CodeGuard found ${totalIssues} issues (${criticalIssues} critical)`
-      );
-    } else if (totalIssues > 0) {
-      vscode.window.showInformationMessage(
-        `CodeGuard found ${totalIssues} issues`
-      );
-    } else {
-      vscode.window.showInformationMessage('CodeGuard: No issues found');
-    }
-  }
-  
-  private getSeverity(level: SeverityLevel): vscode.DiagnosticSeverity {
-    switch (level) {
-      case 'critical':
-      case 'high':
-        return vscode.DiagnosticSeverity.Error;
-      case 'medium':
-        return vscode.DiagnosticSeverity.Warning;
-      case 'low':
-        return vscode.DiagnosticSeverity.Information;
-      default:
-        return vscode.DiagnosticSeverity.Hint;
-    }
-  }
-}
-```
-
-### Integration Examples
-
-```typescript
-// Example: CI/CD Integration
-export class CICDIntegration {
-  private apiClient: CodeGuardAPIClient;
-  
-  constructor(apiUrl: string, token: string) {
-    this.apiClient = new CodeGuardAPIClient(apiUrl);
-    this.apiClient.setToken(token);
-  }
-  
-  async analyzePullRequest(prNumber: number, files: string[]): Promise<AnalysisReport> {
-    const results: AnalysisResult[] = [];
-    
-    for (const file of files) {
-      if (file.endsWith('.cpp') || file.endsWith('.c')) {
-        const content = await this.readFile(file);
-        
-        const staticResult = await this.apiClient.runStaticAnalysis({
-          code: content,
-          language: file.endsWith('.cpp') ? 'cpp' : 'c'
+        result.vulnerabilities.forEach(vuln => {
+            console.log(`Line ${vuln.lineNumber}: ${vuln.cweType} (${vuln.severityLevel})`);
         });
         
-        results.push(staticResult);
-      }
+    } catch (error) {
+        console.error('Analysis failed:', error);
     }
-    
-    return this.generateReport(results);
-  }
-  
-  private generateReport(results: AnalysisResult[]): AnalysisReport {
-    const totalIssues = results.reduce((sum, result) => sum + result.summary.totalIssues, 0);
-    const criticalIssues = results.reduce((sum, result) => sum + result.summary.criticalIssues, 0);
-    
-    return {
-      summary: {
-        totalFiles: results.length,
-        totalIssues,
-        criticalIssues,
-        highIssues: results.reduce((sum, result) => sum + result.summary.highIssues, 0),
-        mediumIssues: results.reduce((sum, result) => sum + result.summary.mediumIssues, 0),
-        lowIssues: results.reduce((sum, result) => sum + result.summary.lowIssues, 0)
-      },
-      results,
-      recommendations: this.generateRecommendations(results)
-    };
-  }
-  
-  private generateRecommendations(results: AnalysisResult[]): string[] {
-    const recommendations: string[] = [];
-    
-    const criticalCount = results.reduce((sum, result) => sum + result.summary.criticalIssues, 0);
-    if (criticalCount > 0) {
-      recommendations.push(`Fix ${criticalCount} critical security vulnerabilities before merging`);
-    }
-    
-    const highCount = results.reduce((sum, result) => sum + result.summary.highIssues, 0);
-    if (highCount > 0) {
-      recommendations.push(`Address ${highCount} high-severity issues`);
-    }
-    
-    return recommendations;
-  }
 }
 ```
 
-This API reference provides comprehensive documentation for integrating with CodeGuard. For additional examples and use cases, refer to the [Examples](docs/EXAMPLES.md) documentation. 
+### Complete Dynamic Analysis Example
+
+```typescript
+async function runDynamicAnalysis() {
+    const authManager = new AuthManager();
+    await authManager.authenticate('username', 'password');
+    
+    const client = new CodeGuardApiClient('http://localhost:3000', authManager);
+    
+    const request: DynamicAnalysisRequest = {
+        sourceCode: `
+            void fuzz_target(char* input, size_t length) {
+                char buffer[100];
+                if (length < 100) {
+                    memcpy(buffer, input, length);
+                }
+            }
+        `,
+        fuzzingOptions: {
+            timeout: 300,
+            fuzzerType: 'aflplusplus',
+            sanitizers: ['address', 'undefined', 'leak'],
+            maxMemory: '2GB',
+            concolicExecution: true
+        }
+    };
+    
+    try {
+        const result = await client.runDynamicAnalysis(request);
+        
+        console.log(`Fuzzing completed in ${result.processingTime}ms`);
+        console.log(`Coverage: ${result.coverage.lineCoverage * 100}%`);
+        console.log(`Unique crashes: ${result.fuzzingStats.uniqueCrashes}`);
+        
+        result.vulnerabilities.forEach(vuln => {
+            console.log(`Vulnerability: ${vuln.type} at line ${vuln.lineNumber}`);
+        });
+        
+    } catch (error) {
+        console.error('Fuzzing failed:', error);
+    }
+}
+```
+
+### Container Management Example
+
+```typescript
+async function manageContainers() {
+    const authManager = new AuthManager();
+    await authManager.authenticate('username', 'password');
+    
+    const client = new CodeGuardApiClient('http://localhost:3000', authManager);
+    
+    try {
+        // Check container status
+        const status = await client.request<ContainerStatusResponse>('/api/containers/status');
+        
+        console.log('Static Analysis:', status.staticAnalysis.status);
+        console.log('Dynamic Analysis:', status.dynamicAnalysis.status);
+        
+        // Start containers if needed
+        if (status.staticAnalysis.status !== 'running') {
+            await client.request('/api/containers/start', {
+                method: 'POST',
+                body: JSON.stringify({ service: 'static-analysis' })
+            });
+        }
+        
+        if (status.dynamicAnalysis.status !== 'running') {
+            await client.request('/api/containers/start', {
+                method: 'POST',
+                body: JSON.stringify({ service: 'dynamic-analysis' })
+            });
+        }
+        
+    } catch (error) {
+        console.error('Container management failed:', error);
+    }
+}
+```
+
+### VS Code Extension Integration Example
+
+```typescript
+import * as vscode from 'vscode';
+import { CodeGuardApiClient, AuthManager } from './codeguard-api';
+
+export class CodeGuardExtension {
+    private apiClient: CodeGuardApiClient;
+    private authManager: AuthManager;
+    
+    constructor() {
+        this.authManager = new AuthManager();
+        this.apiClient = new CodeGuardApiClient('http://localhost:5000', this.authManager);
+    }
+    
+    async activate(context: vscode.ExtensionContext) {
+        // Register commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('codeguard.runStaticAnalysis', () => {
+                this.runStaticAnalysis();
+            }),
+            
+            vscode.commands.registerCommand('codeguard.runDynamicAnalysis', () => {
+                this.runDynamicAnalysis();
+            })
+        );
+        
+        // Set up file change listener
+        const fileChangeListener = vscode.workspace.onDidSaveTextDocument((document) => {
+            if (document.languageId === 'cpp' || document.languageId === 'c') {
+                this.analyzeFile(document);
+            }
+        });
+        
+        context.subscriptions.push(fileChangeListener);
+    }
+    
+    private async analyzeFile(document: vscode.TextDocument) {
+        try {
+            const request: StaticAnalysisRequest = {
+                code: document.getText(),
+                language: document.languageId as 'cpp' | 'c'
+            };
+            
+            const result = await this.apiClient.runStaticAnalysis(request);
+            
+            // Display results in VS Code
+            this.displayResults(result.vulnerabilities, document);
+            
+        } catch (error) {
+            vscode.window.showErrorMessage(`Analysis failed: ${error.message}`);
+        }
+    }
+    
+    private displayResults(vulnerabilities: VulnerabilityResult[], document: vscode.TextDocument) {
+        const diagnostics: vscode.Diagnostic[] = vulnerabilities.map(vuln => {
+            const range = new vscode.Range(
+                vuln.lineNumber - 1, 0,
+                vuln.lineNumber - 1, 1000
+            );
+            
+            return new vscode.Diagnostic(
+                range,
+                `${vuln.cweType}: ${vuln.description}`,
+                this.getSeverity(vuln.severityLevel)
+            );
+        });
+        
+        vscode.languages.createDiagnosticCollection('CodeGuard').set(document.uri, diagnostics);
+    }
+    
+    private getSeverity(level: string): vscode.DiagnosticSeverity {
+        switch (level) {
+            case 'Critical':
+            case 'High':
+                return vscode.DiagnosticSeverity.Error;
+            case 'Medium':
+                return vscode.DiagnosticSeverity.Warning;
+            case 'Low':
+                return vscode.DiagnosticSeverity.Information;
+            default:
+                return vscode.DiagnosticSeverity.Warning;
+        }
+    }
+}
+```
+
+## Conclusion
+
+This API documentation provides comprehensive coverage of CodeGuard's REST API and extension integration capabilities. The APIs are designed to be flexible, secure, and easy to integrate into existing development workflows.
+
+Key features include:
+- **RESTful API design** for remote analysis services
+- **JWT authentication** for secure access
+- **Comprehensive error handling** with detailed error types
+- **TypeScript interfaces** for type-safe integration
+- **Container management** APIs for deployment
+- **VS Code extension integration** for seamless development experience
+
+For additional information, refer to the [Architecture Documentation](ARCHITECTURE.md) and [Usage Guide](USAGE.md). 
