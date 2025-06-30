@@ -1,513 +1,425 @@
 # CodeGuard Architecture Documentation
 
-## Overview
+This document describes the architecture, design patterns, and system components of the CodeGuard extension.
 
-CodeGuard is designed as a modular, extensible security analysis platform that integrates static and dynamic analysis capabilities within the VS Code environment. This document provides a comprehensive overview of the system architecture, component interactions, and design decisions.
+## Table of Contents
+1. [System Overview](#system-overview)
+2. [Architecture Patterns](#architecture-patterns)
+3. [Component Architecture](#component-architecture)
+4. [Data Flow](#data-flow)
+5. [Docker Integration](#docker-integration)
+6. [Security Considerations](#security-considerations)
+7. [Performance Considerations](#performance-considerations)
+8. [Scalability](#scalability)
 
-## System Architecture
+## System Overview
+
+CodeGuard is a VS Code extension that provides comprehensive security analysis for C/C++ code through a unified interface. The system combines static and dynamic analysis capabilities, running analysis in isolated Docker containers for security and consistency.
+
+### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        VS Code Extension                        │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │   Static        │  │   Dynamic       │  │   Unified       │  │
-│  │   Analysis      │  │   Analysis      │  │   Interface     │  │
-│  │   Engine        │  │   Engine        │  │                 │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Analysis Orchestrator                        │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │   ML Models     │  │   Fuzzing       │  │   Sanitizers    │  │
-│  │   (Local/       │  │   Engine        │  │   Integration   │  │
-│  │   Remote)       │  │                 │  │                 │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Results Processing                           │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │   Diagnostics   │  │   Fuzzing       │  │   Reports       │  │
-│  │   Display       │  │   Results       │  │   Export        │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    VS Code Extension                        │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   UI Layer  │  │ Analysis    │  │  Config     │         │
+│  │             │  │  Manager    │  │  Manager    │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+├─────────────────────────────────────────────────────────────┤
+│                    Shared Services                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Docker    │  │ Diagnostic  │  │   Error     │         │
+│  │   Runner    │  │  Manager    │  │  Handler    │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+├─────────────────────────────────────────────────────────────┤
+│                    Analysis Engines                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Static    │  │  Dynamic    │  │ Combined    │         │
+│  │  Analysis   │  │  Analysis   │  │  Analysis   │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Docker Containers                        │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐                    ┌─────────────┐         │
+│  │   Static    │                    │  Dynamic    │         │
+│  │  Analysis   │                    │  Analysis   │         │
+│  │  Container  │                    │  Container  │         │
+│  └─────────────┘                    └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Architecture Patterns
+
+### 1. Manager Pattern
+Each major component is managed by a dedicated manager class that encapsulates related functionality:
+
+- **AnalysisManager**: Orchestrates analysis execution
+- **ConfigManager**: Manages configuration and settings
+- **DiagnosticManager**: Handles result display and diagnostics
+- **OutputManager**: Manages output panel and logging
+- **ProgressManager**: Handles progress tracking and UI updates
+- **StatusBarManager**: Manages status bar display
+
+### 2. Dependency Injection
+Managers are injected into components that need them, promoting loose coupling and testability:
+
+```typescript
+class AnalysisManager {
+  constructor(
+    private configManager: ConfigManager,
+    private diagnosticManager: DiagnosticManager,
+    private outputManager: OutputManager,
+    private progressManager: ProgressManager
+  ) {}
+}
+```
+
+### 3. Command Pattern
+Analysis operations are implemented as commands that can be executed, cancelled, and queued:
+
+```typescript
+interface AnalysisCommand {
+  execute(): Promise<AnalysisResult>;
+  cancel(): Promise<void>;
+  getStatus(): AnalysisStatus;
+}
+```
+
+### 4. Observer Pattern
+UI components observe analysis progress and status changes:
+
+```typescript
+interface ProgressObserver {
+  onProgressUpdate(progress: ProgressInfo): void;
+  onAnalysisComplete(result: AnalysisResult): void;
+  onAnalysisError(error: Error): void;
+}
 ```
 
 ## Component Architecture
 
-### 1. Static Analysis Engine
+### 1. Extension Entry Point (`src/extension.ts`)
 
-The static analysis engine uses transformer-based machine learning models for vulnerability prediction.
+**Responsibilities**:
+- Extension activation and deactivation
+- Command registration
+- Manager initialization
+- Event listener setup
 
-#### Core Components
-
-- **Extension Core** (`StaticAnalysis/code/src/extension.ts`)
-  - Manages VS Code integration
-  - Handles file change events
-  - Coordinates analysis workflows
-  - Manages diagnostic display
-
-- **Inference Engine** (`StaticAnalysis/code/src/inference.ts`)
-  - Interfaces with ML models
-  - Supports local and remote inference
-  - Handles model loading and caching
-  - Manages CUDA acceleration
-
-- **Diagnostics Manager** (`StaticAnalysis/code/src/diagnostics.ts`)
-  - Processes vulnerability results
-  - Formats diagnostic messages
-  - Manages severity highlighting
-  - Handles user preferences
-
-#### Data Flow
-
-```
-Source Code → Preprocessing → ML Model → Post-processing → Diagnostics
-     │              │            │            │              │
-     ▼              ▼            ▼            ▼              ▼
-File Change → Tokenization → Inference → CWE Mapping → VS Code Display
+**Key Methods**:
+```typescript
+export function activate(context: vscode.ExtensionContext): void
+export function deactivate(): void
 ```
 
-#### Model Architecture
+### 2. Analysis Manager (`src/analysis/analysis-manager.ts`)
 
-The static analysis uses two primary models:
+**Responsibilities**:
+- Orchestrates analysis execution
+- Manages analysis lifecycle
+- Handles concurrent analysis
+- Aggregates results
 
-1. **LineVul Model**: Transformer-based line-level vulnerability prediction
-   - Input: Tokenized source code lines
-   - Output: Vulnerability probability scores
-   - Architecture: BERT-based transformer
-
-2. **VulRepair Model**: T5-based vulnerability repair suggestion
-   - Input: Vulnerable code snippets
-   - Output: Suggested fixes
-   - Architecture: T5 transformer
-
-### 2. Dynamic Analysis Engine
-
-The dynamic analysis engine provides grey box concolic execution fuzzing with sanitizer-based vulnerability detection.
-
-#### Core Components
-
-- **Fuzzing Orchestrator** (`DynamicAnalysis/extension/src/core/orchestrator.ts`)
-  - Coordinates multiple fuzzing tools
-  - Manages fuzzing workflows
-  - Handles result aggregation
-  - Provides unified API
-
-- **Grey Box Concolic Engine** (`DynamicAnalysis/extension/src/core/concolic/`)
-  - Implements concolic execution
-  - Manages symbolic and concrete execution
-  - Generates test cases
-  - Optimizes exploration strategies
-
-- **Fuzzing Engine** (`DynamicAnalysis/extension/src/core/fuzzing/`)
-  - AFL++ integration
-  - Eclipser integration
-  - Test case generation
-  - Coverage tracking
-
-- **Sanitizer Integration** (`DynamicAnalysis/extension/src/core/sanitizers/`)
-  - AddressSanitizer integration
-  - UndefinedBehaviorSanitizer integration
-  - LeakSanitizer integration
-  - ThreadSanitizer integration
-
-#### Analysis Pipeline
-
-```
-Source Code → Compilation → Fuzzing → Sanitizer Detection → Result Processing
-     │            │            │            │                │
-     ▼            ▼            ▼            ▼                ▼
-C/C++ Files → Sanitizer Flags → Concolic Execution → Runtime Detection → Fuzzing Reports
+**Key Methods**:
+```typescript
+async runAnalysis(type: AnalysisType, workspace: WorkspaceFolder, files: string[]): Promise<AnalysisResult>
+async cancelAnalysis(): Promise<void>
+getAnalysisStatus(): AnalysisStatus
 ```
 
-### 3. Containerization Layer
+### 3. Static Analysis (`src/static/static-analysis.ts`)
 
-Both analysis engines are containerized for consistent deployment and isolation.
+**Responsibilities**:
+- Executes static analysis
+- Integrates with AI models
+- Processes vulnerability results
+- Maps to CWE classifications
+
+**Key Methods**:
+```typescript
+async analyze(workspace: WorkspaceFolder, files: string[]): Promise<StaticAnalysisResult>
+private processResults(rawResults: any): Vulnerability[]
+private mapToCWE(vulnerability: any): string
+```
+
+### 4. Dynamic Analysis (`src/dynamic/dynamic-analysis.ts`)
+
+**Responsibilities**:
+- Executes dynamic analysis
+- Manages runtime testing
+- Detects memory leaks
+- Generates crash reports
+
+**Key Methods**:
+```typescript
+async analyze(workspace: WorkspaceFolder, files: string[]): Promise<DynamicAnalysisResult>
+private detectMemoryLeaks(output: string): MemoryLeak[]
+private generateCrashReport(output: string): CrashReport[]
+```
+
+### 5. Docker Runner (`src/shared/docker-runner.ts`)
+
+**Responsibilities**:
+- Manages Docker container lifecycle
+- Handles volume mounting
+- Executes commands in containers
+- Manages container resources
+
+**Key Methods**:
+```typescript
+async runStaticAnalysis(workspacePath: string, files: string[]): Promise<StaticAnalysisResult>
+async runDynamicAnalysis(workspacePath: string, files: string[]): Promise<DynamicAnalysisResult>
+private buildImage(imageName: string, dockerfilePath: string): Promise<void>
+private runContainer(imageName: string, command: string[], volumes: string[]): Promise<string>
+```
+
+### 6. UI Components
+
+#### Output Manager (`src/ui/output-manager.ts`)
+- Manages output panel display
+- Formats analysis results
+- Handles output clearing and navigation
+
+#### Progress Manager (`src/ui/progress-manager.ts`)
+- Shows progress notifications
+- Updates progress bars
+- Handles progress cancellation
+
+#### Status Bar Manager (`src/ui/status-bar-manager.ts`)
+- Displays current status
+- Shows analysis progress
+- Provides quick access to commands
+
+### 7. Configuration Manager (`src/config/config-manager.ts`)
+
+**Responsibilities**:
+- Loads VS Code settings
+- Manages configuration updates
+- Provides default values
+- Validates configuration
+
+**Key Methods**:
+```typescript
+getConfig(): CodeGuardConfig
+updateConfig(updates: Partial<CodeGuardConfig>): void
+getSetting<T>(key: string, defaultValue: T): T
+```
+
+### 8. Diagnostic Manager (`src/diagnostics/diagnostic-manager.ts`)
+
+**Responsibilities**:
+- Manages VS Code diagnostics
+- Displays analysis results
+- Handles diagnostic updates
+- Provides navigation to issues
+
+**Key Methods**:
+```typescript
+updateDiagnostics(results: AnalysisResult): void
+clearDiagnostics(): void
+showDiagnostics(): void
+```
+
+## Data Flow
+
+### 1. Analysis Request Flow
+
+```
+User Command → Extension → Analysis Manager → Docker Runner → Container → Results → UI Update
+```
+
+**Detailed Flow**:
+1. User triggers analysis command
+2. Extension validates input and workspace
+3. Analysis Manager creates analysis task
+4. Docker Runner builds/uses container
+5. Analysis executes in container
+6. Results are processed and formatted
+7. UI components display results
+8. Diagnostics are updated
+
+### 2. Progress Update Flow
+
+```
+Analysis Progress → Progress Manager → UI Components → User Feedback
+```
+
+**Detailed Flow**:
+1. Analysis reports progress
+2. Progress Manager updates progress
+3. UI components reflect changes
+4. User sees real-time updates
+
+### 3. Error Handling Flow
+
+```
+Error Occurrence → Error Handler → Logging → User Notification → Recovery
+```
+
+**Detailed Flow**:
+1. Error occurs in any component
+2. Error Handler captures and processes error
+3. Error is logged for debugging
+4. User is notified appropriately
+5. System attempts recovery if possible
+
+## Docker Integration
+
+### Container Architecture
 
 #### Static Analysis Container
-
-```dockerfile
-# StaticAnalysis/Dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Expose API port
-EXPOSE 5000
-
-# Start inference server
-CMD ["python", "remote-inference-py/server.py"]
+```
+┌─────────────────────────────────────────────────────────────┐
+│                Static Analysis Container                    │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Python    │  │   ML Models │  │   Analysis  │         │
+│  │  Runtime    │  │             │  │   Engine    │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Input     │  │   Output    │  │   Logs      │         │
+│  │   Volume    │  │   Volume    │  │             │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 #### Dynamic Analysis Container
-
-```dockerfile
-# DynamicAnalysis/Dockerfile
-FROM ubuntu:20.04
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    clang \
-    llvm \
-    afl++ \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-RUN apt-get install -y nodejs
-
-# Copy application code
-COPY . .
-
-# Install Node.js dependencies
-RUN npm install
-
-# Expose API port
-EXPOSE 3000
-
-# Start analysis server
-CMD ["npm", "start"]
+```
+┌─────────────────────────────────────────────────────────────┐
+│                Dynamic Analysis Container                   │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   C/C++     │  │   CASR      │  │   Memory    │         │
+│  │  Compiler   │  │   Tools     │  │   Monitor   │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │   Source    │  │   Results   │  │   Reports   │         │
+│  │   Volume    │  │   Volume    │  │             │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-#### Docker Compose Configuration
+### Volume Management
+- **Source Volume**: Mounts workspace files for analysis
+- **Results Volume**: Stores analysis results
+- **Models Volume**: Contains ML models for static analysis
+- **Logs Volume**: Stores execution logs
 
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  static-analysis:
-    build: ./StaticAnalysis
-    ports:
-      - "5000:5000"
-    environment:
-      - NODE_ENV=production
-      - MODEL_PATH=/app/models
-    volumes:
-      - static-models:/app/models
-      - static-cache:/app/cache
-    restart: unless-stopped
-
-  dynamic-analysis:
-    build: ./DynamicAnalysis
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - FUZZING_TIMEOUT=300
-      - MAX_MEMORY=2GB
-    volumes:
-      - dynamic-results:/app/results
-      - dynamic-cache:/app/cache
-    restart: unless-stopped
-
-volumes:
-  static-models:
-  static-cache:
-  dynamic-results:
-  dynamic-cache:
-```
-
-### 4. API Layer
-
-The API layer provides RESTful endpoints for remote analysis and result management.
-
-#### API Components
-
-- **Express Server** (`DynamicAnalysis/extension/src/api/server.ts`)
-  - RESTful API endpoints
-  - Authentication middleware
-  - Rate limiting
-  - CORS handling
-
-- **Analysis Controllers** (`DynamicAnalysis/extension/src/api/controllers/`)
-  - Static analysis endpoints
-  - Dynamic analysis endpoints
-  - Result retrieval endpoints
-  - Health check endpoints
-
-- **Authentication** (`DynamicAnalysis/extension/src/api/middleware/auth.ts`)
-  - JWT token validation
-  - User authentication
-  - Role-based access control
-
-#### API Endpoints
-
-```typescript
-// Static Analysis
-POST /api/analysis/static
-{
-  "code": string,
-  "language": "cpp" | "c",
-  "options": {
-    "inferenceMode": "local" | "remote",
-    "useCUDA": boolean
-  }
-}
-
-// Dynamic Analysis
-POST /api/analysis/dynamic
-{
-  "sourceCode": string,
-  "fuzzingOptions": {
-    "timeout": number,
-    "fuzzerType": "aflplusplus" | "eclipser",
-    "sanitizers": string[]
-  }
-}
-
-// Results
-GET /api/results/:id
-GET /api/health
-```
-
-### 5. Extension Integration
-
-The VS Code extension provides the user interface and integrates all analysis components.
-
-#### Extension Components
-
-- **Command Registration** (`DynamicAnalysis/extension/src/extension/extension.ts`)
-  - Registers VS Code commands
-  - Handles command execution
-  - Manages extension lifecycle
-
-- **Status Bar Integration**
-  - Shows analysis status
-  - Displays progress indicators
-  - Provides quick access to results
-
-- **Output Channels**
-  - Analysis logs
-  - Error messages
-  - Debug information
-
-## Data Models
-
-### Vulnerability Result
-
-```typescript
-interface VulnerabilityResult {
-  id: string;
-  lineNumber: number;
-  columnNumber?: number;
-  cweId: string;
-  cweType: string;
-  cweSummary: string;
-  severityLevel: 'Low' | 'Medium' | 'High' | 'Critical';
-  severityScore: number;
-  confidenceScore: number;
-  description: string;
-  remediation?: string;
-  source: 'static' | 'dynamic';
-  tool: string;
-  timestamp: Date;
-}
-```
-
-### Fuzzing Result
-
-```typescript
-interface FuzzingResult {
-  id: string;
-  vulnerabilities: VulnerabilityResult[];
-  testCases: TestCase[];
-  coverage: CoverageInfo;
-  fuzzingStats: FuzzingStats;
-  processingTime: number;
-  timestamp: Date;
-}
-
-interface TestCase {
-  id: string;
-  input: string;
-  coverage: number;
-  crashType?: string;
-  stackTrace?: string;
-}
-
-interface CoverageInfo {
-  lineCoverage: number;
-  branchCoverage: number;
-  functionCoverage: number;
-  uncoveredLines: number[];
-}
-
-interface FuzzingStats {
-  totalExecutions: number;
-  uniqueCrashes: number;
-  timeouts: number;
-  averageExecutionTime: number;
-}
-```
-
-### Analysis Configuration
-
-```typescript
-interface AnalysisConfig {
-  static: {
-    inferenceMode: 'local' | 'remote';
-    useCUDA: boolean;
-    delayBeforeAnalysis: number;
-    maxNumberOfLines: number;
-  };
-  dynamic: {
-    fuzzingTimeout: number;
-    fuzzerType: 'aflplusplus' | 'eclipser';
-    sanitizers: string[];
-    maxMemory: string;
-  };
-  containers: {
-    useContainers: boolean;
-    staticAnalysisUrl: string;
-    dynamicAnalysisUrl: string;
-    autoStart: boolean;
-  };
-}
-```
+### Container Lifecycle
+1. **Build Phase**: Build container images if not exists
+2. **Start Phase**: Start container with mounted volumes
+3. **Execution Phase**: Run analysis commands
+4. **Collection Phase**: Collect results from volumes
+5. **Cleanup Phase**: Stop and remove containers
 
 ## Security Considerations
 
-### Data Privacy
+### 1. Container Isolation
+- Analysis runs in isolated Docker containers
+- No direct access to host system
+- Limited resource allocation
+- Network isolation
 
-- **Local Processing**: Static analysis can run entirely locally
-- **Secure Communication**: API endpoints use HTTPS and JWT authentication
-- **Data Minimization**: Only necessary code snippets are sent for analysis
-- **Audit Logging**: All analysis requests are logged for security auditing
+### 2. Input Validation
+- All user inputs are validated
+- File path sanitization
+- Command injection prevention
+- Resource limit enforcement
 
-### Access Control
+### 3. Error Handling
+- Secure error messages (no sensitive data)
+- Proper exception handling
+- Graceful degradation
+- Audit logging
 
-- **User Authentication**: JWT-based authentication for API access
-- **Rate Limiting**: Prevents abuse of analysis endpoints
-- **Input Validation**: Comprehensive validation of all inputs
-- **Output Sanitization**: All outputs are sanitized to prevent injection attacks
-
-### Container Security
-
-- **Isolation**: Each analysis runs in isolated containers
-- **Resource Limits**: Memory and CPU limits prevent resource exhaustion
-- **Network Isolation**: Containers communicate only through defined APIs
-- **Image Security**: Base images are regularly updated for security patches
+### 4. Configuration Security
+- Secure default settings
+- Configuration validation
+- No hardcoded secrets
+- Environment variable usage
 
 ## Performance Considerations
 
-### Static Analysis Performance
+### 1. Resource Management
+- Docker container resource limits
+- Memory usage monitoring
+- CPU usage optimization
+- Disk space management
 
-- **Model Caching**: ML models are cached in memory
-- **Incremental Analysis**: Only modified functions are re-analyzed
-- **Background Processing**: Analysis runs in background threads
-- **Result Caching**: Previous results are cached to avoid redundant analysis
+### 2. Caching Strategy
+- Docker image caching
+- Analysis result caching
+- Configuration caching
+- Model caching
 
-### Dynamic Analysis Performance
+### 3. Concurrency
+- Concurrent analysis support
+- Async/await patterns
+- Non-blocking UI updates
+- Background processing
 
-- **Parallel Fuzzing**: Multiple fuzzing instances run in parallel
-- **Timeout Management**: Analysis is bounded by configurable timeouts
-- **Resource Monitoring**: System resources are monitored during analysis
-- **Graceful Degradation**: System continues to function even if some components fail
-
-### Container Performance
-
-- **Resource Optimization**: Efficient memory and CPU usage
-- **Caching Strategies**: Multi-level caching for improved performance
-- **Async Processing**: Non-blocking operations for better responsiveness
-- **Batch Processing**: Support for batch analysis of multiple files
+### 4. Optimization Techniques
+- Lazy loading of components
+- Efficient data structures
+- Minimal memory footprint
+- Fast startup times
 
 ## Scalability
 
-### Horizontal Scaling
+### 1. Horizontal Scaling
+- Multiple analysis containers
+- Load balancing capabilities
+- Distributed processing
+- Resource pooling
 
-- **Stateless Design**: API endpoints are stateless for easy scaling
-- **Load Balancing**: Multiple instances can be load balanced
-- **Database Separation**: Results can be stored in external databases
-- **Microservices**: Components can be deployed as separate services
+### 2. Vertical Scaling
+- Resource allocation adjustment
+- Performance tuning
+- Memory optimization
+- CPU optimization
 
-### Vertical Scaling
+### 3. Extensibility
+- Plugin architecture support
+- Custom analysis engines
+- Configurable workflows
+- Modular design
 
-- **Resource Optimization**: Efficient memory and CPU usage
-- **Caching Strategies**: Multi-level caching for improved performance
-- **Async Processing**: Non-blocking operations for better responsiveness
-- **Batch Processing**: Support for batch analysis of multiple files
+### 4. Future Enhancements
+- Cloud-based analysis
+- Distributed processing
+- Real-time collaboration
+- Advanced reporting
 
-### Container Scaling
+## Design Principles
 
-- **Auto-scaling**: Containers can be auto-scaled based on load
-- **Resource Limits**: Individual container resource limits
-- **Health Checks**: Automated health monitoring and restart
-- **Load Distribution**: Intelligent load distribution across containers
+### 1. Separation of Concerns
+- Each component has a single responsibility
+- Clear interfaces between components
+- Minimal coupling between modules
+- High cohesion within modules
 
-## Monitoring and Observability
+### 2. Dependency Inversion
+- High-level modules don't depend on low-level modules
+- Abstractions don't depend on details
+- Details depend on abstractions
+- Inversion of control
 
-### Logging
+### 3. Open/Closed Principle
+- Open for extension
+- Closed for modification
+- Plugin architecture support
+- Configurable behavior
 
-- **Structured Logging**: JSON-formatted logs for easy parsing
-- **Log Levels**: Configurable log levels for different environments
-- **Log Aggregation**: Centralized log collection and analysis
-- **Performance Metrics**: Detailed timing and resource usage metrics
+### 4. Single Responsibility
+- Each class has one reason to change
+- Focused functionality
+- Clear purpose
+- Maintainable code
 
-### Metrics
-
-- **Analysis Metrics**: Success rates, processing times, error rates
-- **User Metrics**: Usage patterns, feature adoption
-- **System Metrics**: Resource utilization, performance bottlenecks
-- **Security Metrics**: Authentication attempts, rate limit violations
-
-### Container Monitoring
-
-- **Health Checks**: Regular health check endpoints
-- **Resource Monitoring**: CPU, memory, and network usage
-- **Log Monitoring**: Centralized log collection
-- **Alerting**: Automated alerts for issues
-
-## Future Enhancements
-
-### Planned Features
-
-1. **Integration with CI/CD**: Automated analysis in build pipelines
-2. **Custom Rule Engine**: User-defined vulnerability detection rules
-3. **Advanced Fuzzing**: Integration with additional fuzzing tools
-4. **Cloud Deployment**: SaaS version with cloud-based analysis
-5. **Multi-language Support**: Extension to other programming languages
-
-### Technical Improvements
-
-1. **Model Optimization**: Improved ML model performance and accuracy
-2. **Real-time Collaboration**: Multi-user analysis and result sharing
-3. **Advanced Reporting**: Enhanced visualization and reporting capabilities
-4. **Plugin Architecture**: Extensible plugin system for custom analyzers
-
-### Container Improvements
-
-1. **Kubernetes Deployment**: Native Kubernetes support
-2. **Service Mesh**: Istio integration for advanced networking
-3. **Auto-scaling**: Intelligent auto-scaling based on demand
-4. **Multi-region**: Global deployment with regional optimization
-
-## Conclusion
-
-The CodeGuard architecture is designed to be modular, scalable, and maintainable. The separation of concerns between static and dynamic analysis allows for independent development and optimization of each component. The containerization layer provides consistent deployment and isolation, while the API layer provides flexibility for integration with other tools and systems.
-
-The architecture supports both local and remote deployment models, making it suitable for individual developers, development teams, and enterprise environments. The focus on security, performance, and scalability ensures that CodeGuard can grow with the needs of its users while maintaining high standards of code quality and security analysis. 
+This architecture documentation provides a comprehensive overview of the CodeGuard extension's design and implementation. The modular, containerized approach ensures security, scalability, and maintainability while providing a seamless user experience. 

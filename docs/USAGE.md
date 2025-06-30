@@ -1,517 +1,358 @@
 # CodeGuard Usage Guide
 
-This comprehensive guide covers how to use CodeGuard for both static and dynamic security analysis of C/C++ code. The guide assumes you have successfully installed CodeGuard and have basic familiarity with VS Code.
+This guide provides detailed instructions for using the CodeGuard extension effectively.
 
 ## Table of Contents
-
-- [Getting Started](#getting-started)
-- [Static Analysis Workflow](#static-analysis-workflow)
-- [Dynamic Analysis Workflow](#dynamic-analysis-workflow)
-- [Configuration Management](#configuration-management)
-- [Advanced Features](#advanced-features)
-- [Best Practices](#best-practices)
-- [Troubleshooting](#troubleshooting)
+1. [Getting Started](#getting-started)
+2. [Running Analysis](#running-analysis)
+3. [Understanding Results](#understanding-results)
+4. [Applying Fixes](#applying-fixes)
+5. [Advanced Features](#advanced-features)
+6. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
-### Prerequisites
-
+### Prerequisites Check
 Before using CodeGuard, ensure you have:
+- ✅ VS Code 1.96.0 or higher
+- ✅ Docker Desktop installed and running
+- ✅ A C/C++ project open in VS Code
+- ✅ At least one .c or .cpp file in your workspace
 
-- **VS Code**: Version 1.69.0 or higher
-- **Node.js**: Version 16.x or higher
-- **Python**: Version 3.8+ (for local static analysis)
-- **Docker**: Version 20.10+ (for containerized analysis)
-- **C/C++ Compiler**: GCC/Clang with sanitizer support
+### First Run
+1. **Open a C/C++ file** in your project
+2. **Activate the extension** - it should activate automatically for C/C++ files
+3. **Check the status bar** - you should see "CodeGuard Ready" when the extension is active
 
-### Initial Setup
+## Running Analysis
 
-1. **Open VS Code** and navigate to your C/C++ project
-2. **Verify Extension Installation**: Check that CodeGuard appears in the Extensions panel
-3. **Check Status**: Look for the CodeGuard status bar item showing "Ready"
+### Method 1: Command Palette
+1. Press `Ctrl+Shift+P` to open the command palette
+2. Type "CodeGuard" to see available commands
+3. Select one of the following:
+   - `CodeGuard: Run Security Analysis` (Combined)
+   - `CodeGuard: Run Static Analysis` (Static only)
+   - `CodeGuard: Run Dynamic Analysis` (Dynamic only)
 
-### First Analysis
+### Method 2: Keyboard Shortcuts
+- `Ctrl+Shift+A` - Run combined security analysis
+- `Ctrl+Shift+S` - Run static analysis only
+- `Ctrl+Shift+D` - Run dynamic analysis only
+- `Ctrl+Shift+X` - Cancel running analysis
 
-1. **Open a C/C++ file** (`.c`, `.cpp`, `.h`, `.hpp`)
-2. **Static analysis begins automatically** - you'll see diagnostics appear in the Problems panel
-3. **Run dynamic analysis** via Command Palette (`Ctrl+Shift+P` → "Run Fuzzing Analysis")
+### Method 3: Context Menu
+1. Right-click in a C/C++ file editor
+2. Select "Run Security Analysis" from the context menu
 
-## Static Analysis Workflow
+### Analysis Types Explained
 
-### Automatic Analysis
+#### 🔍 Static Analysis
+**What it does**: Analyzes your code without executing it using AI-powered models
+**Best for**: 
+- Early vulnerability detection
+- Code review assistance
+- Security compliance checking
+**Duration**: 30 seconds to 2 minutes (depending on file size)
 
-Static analysis runs automatically when you:
+#### 🧪 Dynamic Analysis
+**What it does**: Runs your code in a controlled Docker environment to detect runtime issues
+**Best for**:
+- Memory leak detection
+- Runtime vulnerability discovery
+- Performance analysis
+**Duration**: 1-5 minutes (depending on code complexity)
 
-- **Open a C/C++ file**
-- **Save changes** to a C/C++ file
-- **Switch between files** in a C/C++ project
+#### 🔄 Combined Analysis
+**What it does**: Runs both static and dynamic analysis concurrently
+**Best for**:
+- Comprehensive security assessment
+- Complete vulnerability scanning
+- Production-ready code validation
+**Duration**: 2-7 minutes (depending on code size and complexity)
 
-### Analysis Results
+## Understanding Results
 
-Static analysis results appear as:
+### Progress Tracking
+During analysis, you'll see:
+- **Progress bar** in the notification area
+- **Status updates** in the status bar
+- **Real-time logs** in the Output panel
 
-- **Inline Diagnostics**: Red/yellow/green underlines in your code
-- **Problems Panel**: Detailed list of all detected vulnerabilities
-- **Hover Information**: Detailed vulnerability information on hover
+### Results Display
 
-### Example Static Analysis Session
+#### Output Panel
+The main results appear in the CodeGuard Output panel:
+1. Open the Output panel (`View > Output`)
+2. Select "CodeGuard" from the dropdown
+3. Review the analysis results
 
-```cpp
-// Example vulnerable code
-void vulnerable_function() {
-    char* buffer = (char*)malloc(10);
-    strcpy(buffer, "This string is too long for the buffer"); // CWE-119
-    free(buffer);
-    free(buffer); // CWE-415
+#### Problems Panel
+Individual issues appear in the Problems panel:
+1. Open the Problems panel (`View > Problems`)
+2. Click on any issue to navigate to the specific line
+3. Hover over issues for detailed descriptions
+
+#### Diagnostic Information
+Each issue includes:
+- **Severity Level**: Critical, High, Medium, Low, Info
+- **CWE Classification**: Common Weakness Enumeration category
+- **File Location**: Exact file and line number
+- **Description**: Detailed explanation of the vulnerability
+- **Fix Suggestion**: Recommended code changes
+
+### Result Categories
+
+#### Critical Issues
+- **Color**: Red
+- **Action Required**: Immediate attention
+- **Examples**: Buffer overflows, SQL injection, command injection
+
+#### High Issues
+- **Color**: Orange
+- **Action Required**: High priority fixes
+- **Examples**: Memory leaks, use-after-free, integer overflows
+
+#### Medium Issues
+- **Color**: Yellow
+- **Action Required**: Should be addressed
+- **Examples**: Weak cryptography, improper input validation
+
+#### Low Issues
+- **Color**: Blue
+- **Action Required**: Best practice improvements
+- **Examples**: Missing error handling, deprecated functions
+
+#### Info Messages
+- **Color**: Green
+- **Action Required**: Informational only
+- **Examples**: Code style suggestions, performance hints
+
+## Applying Fixes
+
+### Automatic Fixes
+CodeGuard provides automatic fix suggestions for many issues:
+
+1. **Navigate to the issue** in the Problems panel
+2. **Click the lightbulb icon** (Code Action) next to the issue
+3. **Select the fix** from the available options
+4. **Review the changes** before applying
+5. **Apply the fix** to your code
+
+### Manual Fixes
+For complex issues, manual fixes are required:
+
+1. **Read the description** carefully
+2. **Follow the suggested approach** in the description
+3. **Test your changes** thoroughly
+4. **Re-run analysis** to verify the fix
+
+### Common Fix Patterns
+
+#### Buffer Overflow Fixes
+```c
+// Before (vulnerable)
+char buffer[10];
+strcpy(buffer, user_input); // Potential overflow
+
+// After (safe)
+char buffer[10];
+strncpy(buffer, user_input, sizeof(buffer) - 1);
+buffer[sizeof(buffer) - 1] = '\0';
+```
+
+#### Memory Leak Fixes
+```c
+// Before (leaky)
+void process_data() {
+    char* data = malloc(100);
+    // ... use data ...
+    // Missing free(data)
+}
+
+// After (fixed)
+void process_data() {
+    char* data = malloc(100);
+    if (data == NULL) return;
+    
+    // ... use data ...
+    
+    free(data); // Proper cleanup
 }
 ```
 
-**Expected Results**:
-- Line 3: Red underline with CWE-119 (Buffer Overflow) - High Severity
-- Line 5: Red underline with CWE-415 (Double Free) - Critical Severity
-- Problems panel shows detailed descriptions and remediation suggestions
+#### Input Validation Fixes
+```c
+// Before (unsafe)
+int value = atoi(user_input);
 
-### Static Analysis Configuration
-
-Configure static analysis behavior in VS Code settings:
-
-```json
-{
-  "CodeGuard.static.inferenceMode": "Local",
-  "CodeGuard.static.useCUDA": false,
-  "CodeGuard.static.delayBeforeAnalysis": 1500,
-  "CodeGuard.static.maxNumberOfLines": 1,
-  "CodeGuard.static.highlightSeverityType": "Error"
+// After (safe)
+char* endptr;
+int value = strtol(user_input, &endptr, 10);
+if (*endptr != '\0' || errno == ERANGE) {
+    // Handle invalid input
+    return ERROR_INVALID_INPUT;
 }
-```
-
-**Configuration Options**:
-- `inferenceMode`: "Local" (default) or "Remote"
-- `useCUDA`: Enable GPU acceleration (requires CUDA-capable GPU)
-- `delayBeforeAnalysis`: Delay in milliseconds before analysis starts
-- `maxNumberOfLines`: Maximum lines to analyze at once
-- `highlightSeverityType`: Minimum severity to highlight ("Error", "Warning", "Info")
-
-## Dynamic Analysis Workflow
-
-### Manual Analysis
-
-Dynamic analysis requires manual initiation:
-
-1. **Open Command Palette** (`Ctrl+Shift+P`)
-2. **Select "Run Fuzzing Analysis"**
-3. **Wait for completion** (typically 1-5 minutes depending on code complexity)
-4. **Review results** in the Output panel
-
-### Grey Box Concolic Execution
-
-The dynamic analysis uses advanced fuzzing techniques:
-
-- **Concolic Execution**: Combines concrete and symbolic execution
-- **Grey Box Fuzzing**: Uses coverage feedback to guide test generation
-- **Sanitizer Integration**: Multiple sanitizers detect various vulnerability types
-
-### Fuzzing Process
-
-1. **Code Compilation**: Source code is compiled with sanitizer flags
-2. **Test Case Generation**: Fuzzing engine generates initial test cases
-3. **Concolic Execution**: Symbolic execution explores program paths
-4. **Vulnerability Detection**: Sanitizers detect runtime vulnerabilities
-5. **Result Aggregation**: All findings are collected and reported
-
-### Example Dynamic Analysis Session
-
-```cpp
-// Target for fuzzing analysis
-void fuzz_target(char* input, size_t length) {
-    char buffer[100];
-    if (length < 100) {
-        memcpy(buffer, input, length); // Potential buffer overflow
-    }
-    // Process buffer...
-}
-```
-
-**Analysis Process**:
-1. Compile with AddressSanitizer and UndefinedBehaviorSanitizer
-2. AFL++ generates test cases with varying input lengths
-3. Concolic execution explores different code paths
-4. Sanitizers detect buffer overflow when `length >= 100`
-5. Results show vulnerability location and test case
-
-### Dynamic Analysis Configuration
-
-```json
-{
-  "CodeGuard.dynamic.apiUrl": "http://localhost:3000",
-  "CodeGuard.dynamic.enableRealTimeAnalysis": true,
-  "CodeGuard.dynamic.fuzzingTimeout": 300,
-  "CodeGuard.dynamic.sanitizers": ["address", "undefined", "leak"],
-  "CodeGuard.dynamic.fuzzerType": "aflplusplus"
-}
-```
-
-**Configuration Options**:
-- `apiUrl`: URL of the dynamic analysis API
-- `enableRealTimeAnalysis`: Enable continuous monitoring
-- `fuzzingTimeout`: Maximum analysis time in seconds
-- `sanitizers`: Array of sanitizers to use
-- `fuzzerType`: Fuzzing engine ("aflplusplus" or "eclipser")
-
-## Containerized Analysis
-
-### Using Containerized Analysis
-
-CodeGuard supports containerized deployment for both static and dynamic analysis:
-
-#### Container Configuration
-
-```json
-{
-  "CodeGuard.containers.staticAnalysisUrl": "http://localhost:5000",
-  "CodeGuard.containers.dynamicAnalysisUrl": "http://localhost:3000",
-  "CodeGuard.containers.useContainers": true,
-  "CodeGuard.containers.autoStart": true
-}
-```
-
-#### Starting Containers
-
-**Manual Start**:
-```bash
-# Start static analysis container
-docker run -d -p 5000:5000 --name codeguard-static codeguard-static
-
-# Start dynamic analysis container
-docker run -d -p 3000:3000 --name codeguard-dynamic codeguard-dynamic
-```
-
-**Docker Compose** (Recommended):
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
-#### Container Health Checks
-
-Monitor container status:
-
-```bash
-# Check container status
-docker ps
-
-# View container logs
-docker logs codeguard-static
-docker logs codeguard-dynamic
-
-# Check API health
-curl http://localhost:5000/health
-curl http://localhost:3000/health
-```
-
-### Container Benefits
-
-- **Isolation**: Analysis runs in isolated environments
-- **Consistency**: Same environment across different machines
-- **Scalability**: Easy to scale with multiple containers
-- **Security**: Reduced attack surface through isolation
-
-## Configuration Management
-
-### VS Code Settings
-
-Access CodeGuard settings:
-
-1. **Open Settings** (`Ctrl+,`)
-2. **Search for "CodeGuard"**
-3. **Configure options** as needed
-
-### Workspace Configuration
-
-Create `.vscode/settings.json` in your project:
-
-```json
-{
-  "CodeGuard.static.inferenceMode": "Remote",
-  "CodeGuard.static.useCUDA": true,
-  "CodeGuard.dynamic.fuzzingTimeout": 600,
-  "CodeGuard.dynamic.sanitizers": ["address", "undefined", "leak", "thread"],
-  "CodeGuard.containers.useContainers": true
-}
-```
-
-### Environment Variables
-
-Set environment variables for advanced configuration:
-
-```bash
-# Static analysis
-export CODEGUARD_STATIC_URL=http://localhost:5000
-export CODEGUARD_STATIC_CUDA=true
-
-# Dynamic analysis
-export CODEGUARD_DYNAMIC_URL=http://localhost:3000
-export CODEGUARD_DYNAMIC_TIMEOUT=300
-
-# Container settings
-export CODEGUARD_USE_CONTAINERS=true
-export CODEGUARD_AUTO_START=true
 ```
 
 ## Advanced Features
 
-### Batch Analysis
-
-Analyze multiple files simultaneously:
-
-1. **Select multiple files** in the Explorer
-2. **Right-click** and select "Run CodeGuard Analysis"
-3. **View consolidated results** in the Problems panel
-
-### Custom Analysis Rules
-
-Define custom analysis parameters:
+### Configuration Options
+Customize CodeGuard behavior in VS Code settings:
 
 ```json
 {
-  "CodeGuard.custom.rules": {
-    "bufferOverflow": {
-      "enabled": true,
-      "severity": "High",
-      "threshold": 0.8
-    },
-    "memoryLeak": {
-      "enabled": true,
-      "severity": "Medium",
-      "threshold": 0.6
-    }
-  }
+  "codeguard.ui.showProgressNotifications": true,
+  "codeguard.ui.showStatusBar": true,
+  "codeguard.ui.autoShowOutput": true,
+  "codeguard.ui.progressLocation": "notification"
 }
 ```
 
-### Integration with Build Systems
+### Performance Monitoring
+Monitor analysis performance:
+1. Run `CodeGuard: Show Performance Report` from command palette
+2. Review execution times and resource usage
+3. Optimize your analysis workflow
 
-Integrate CodeGuard with your build system:
+### UI Testing
+Test UI components:
+1. Run `CodeGuard: Test UI Components` from command palette
+2. Verify all UI elements work correctly
+3. Report any issues found
 
-#### CMake Integration
-
-```cmake
-# CMakeLists.txt
-find_package(CodeGuard REQUIRED)
-
-# Add sanitizer flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined")
-
-# Enable CodeGuard analysis
-codeguard_enable_analysis(${TARGET_NAME})
-```
-
-#### Makefile Integration
-
-```makefile
-# Makefile
-CXXFLAGS += -fsanitize=address,undefined
-LDFLAGS += -fsanitize=address,undefined
-
-# CodeGuard analysis target
-analyze:
-	codeguard-analyze $(SOURCES)
-```
-
-### CI/CD Integration
-
-Integrate CodeGuard into your CI/CD pipeline:
-
-#### GitHub Actions
-
-```yaml
-# .github/workflows/codeguard.yml
-name: CodeGuard Analysis
-
-on: [push, pull_request]
-
-jobs:
-  static-analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run Static Analysis
-        run: |
-          docker run --rm -v ${{ github.workspace }}:/code codeguard-static
-
-  dynamic-analysis:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run Dynamic Analysis
-        run: |
-          docker run --rm -v ${{ github.workspace }}:/code codeguard-dynamic
-```
-
-#### GitLab CI
-
-```yaml
-# .gitlab-ci.yml
-stages:
-  - security
-
-codeguard-analysis:
-  stage: security
-  image: codeguard-dynamic
-  script:
-    - codeguard-analyze --static
-    - codeguard-analyze --dynamic
-  artifacts:
-    reports:
-      security: codeguard-report.json
-```
-
-## Best Practices
-
-### Development Workflow
-
-1. **Enable Real-time Analysis**: Keep static analysis running during development
-2. **Regular Dynamic Analysis**: Run fuzzing analysis before commits
-3. **Review All Findings**: Don't ignore warnings or low-severity issues
-4. **Fix Issues Early**: Address vulnerabilities as soon as they're detected
-
-### Code Organization
-
-1. **Separate Concerns**: Keep vulnerable code isolated
-2. **Clear Interfaces**: Define clear boundaries between components
-3. **Documentation**: Document security-critical code sections
-4. **Testing**: Write tests for security-critical functions
-
-### Performance Optimization
-
-1. **Incremental Analysis**: Only analyze changed files
-2. **Parallel Processing**: Use multiple cores for analysis
-3. **Caching**: Enable result caching for faster subsequent runs
-4. **Resource Limits**: Set appropriate timeouts and memory limits
-
-### Security Considerations
-
-1. **Input Validation**: Always validate external inputs
-2. **Memory Management**: Use smart pointers and RAII
-3. **Error Handling**: Implement proper error handling
-4. **Least Privilege**: Follow principle of least privilege
+### Canceling Analysis
+To cancel a running analysis:
+1. Press `Ctrl+Shift+X`
+2. Or use the cancel button in the progress notification
+3. Wait for the cancellation to complete
 
 ## Troubleshooting
 
-### Common Issues
-
-#### Static Analysis Not Working
-
-**Symptoms**: No diagnostics appear, status shows "Error"
-
+### Analysis Won't Start
+**Symptoms**: Commands don't work, no response
 **Solutions**:
-1. Check Python installation: `python --version`
-2. Verify model files are present
-3. Check VS Code console for error messages
-4. Restart VS Code
+1. Check if a C/C++ file is open
+2. Verify Docker is running: `docker info`
+3. Reload VS Code window: `Ctrl+Shift+P` → "Developer: Reload Window"
+4. Check Output panel for error messages
 
-#### Dynamic Analysis Fails
-
-**Symptoms**: Fuzzing analysis fails to start or complete
-
+### Analysis Fails
+**Symptoms**: Analysis starts but fails with errors
 **Solutions**:
-1. Check Docker containers are running
-2. Verify API endpoints are accessible
-3. Check compiler supports sanitizers
-4. Review container logs for errors
+1. Check Docker logs: `docker logs <container-id>`
+2. Verify file permissions
+3. Ensure sufficient disk space
+4. Check network connectivity for Docker
 
-#### Container Issues
-
-**Symptoms**: Containers fail to start or analysis fails
-
+### Slow Performance
+**Symptoms**: Analysis takes too long
 **Solutions**:
-1. Check Docker is running: `docker ps`
-2. Verify ports are available: `netstat -an | grep 3000`
-3. Check container logs: `docker logs container-name`
-4. Restart containers: `docker-compose restart`
+1. Close unnecessary applications
+2. Increase Docker memory limit
+3. Run analysis on smaller files first
+4. Check system resource usage
 
-### Performance Issues
-
-#### Slow Analysis
-
-**Causes**: Large files, complex code, resource constraints
-
+### Memory Issues
+**Symptoms**: "Out of memory" errors
 **Solutions**:
-1. Increase analysis timeout
-2. Use remote inference mode
-3. Enable CUDA acceleration
-4. Optimize code structure
+1. Restart Docker Desktop
+2. Increase Docker memory allocation
+3. Close other memory-intensive applications
+4. Check available system memory
 
-#### Memory Issues
-
-**Causes**: Large codebases, memory leaks in analysis
-
+### False Positives
+**Symptoms**: Incorrect vulnerability reports
 **Solutions**:
-1. Increase container memory limits
-2. Use incremental analysis
-3. Restart containers periodically
-4. Monitor memory usage
+1. Review the issue description carefully
+2. Check if it's a known limitation
+3. Report false positives via GitHub issues
+4. Consider context-specific analysis
 
-### Debugging
+### Getting Help
+If you encounter issues:
+1. Check this documentation first
+2. Search existing GitHub issues
+3. Create a new issue with:
+   - VS Code version
+   - CodeGuard version
+   - Error messages
+   - Steps to reproduce
+   - Sample code (if applicable)
 
-#### Enable Debug Logging
+## Best Practices
 
-```json
-{
-  "CodeGuard.debug.enabled": true,
-  "CodeGuard.debug.level": "debug",
-  "CodeGuard.debug.outputChannel": "CodeGuard Debug"
+### Before Analysis
+1. **Save all files** before running analysis
+2. **Close unnecessary tabs** to free memory
+3. **Ensure Docker is running** and has sufficient resources
+4. **Start with small files** to test the setup
+
+### During Analysis
+1. **Don't interrupt** the analysis process
+2. **Monitor progress** through the UI
+3. **Keep VS Code open** during analysis
+4. **Avoid heavy system operations**
+
+### After Analysis
+1. **Review all results** carefully
+2. **Prioritize fixes** by severity
+3. **Test fixes** before committing
+4. **Re-run analysis** to verify fixes
+
+### Regular Maintenance
+1. **Update the extension** regularly
+2. **Keep Docker updated**
+3. **Clean up old containers**: `docker system prune`
+4. **Monitor disk space** usage
+
+## Examples
+
+### Example 1: Simple C Program
+```c
+#include <stdio.h>
+#include <string.h>
+
+int main() {
+    char buffer[10];
+    char input[20];
+    
+    printf("Enter text: ");
+    gets(input); // Vulnerable function
+    
+    strcpy(buffer, input); // Potential buffer overflow
+    
+    printf("You entered: %s\n", buffer);
+    return 0;
 }
 ```
 
-#### View Debug Information
+**Analysis Results**:
+- Critical: Use of `gets()` function (CWE-242)
+- High: Potential buffer overflow in `strcpy()` (CWE-787)
+- Medium: Missing input validation
 
-1. **Open Output Panel** (`Ctrl+Shift+U`)
-2. **Select "CodeGuard Debug"** from dropdown
-3. **Review debug messages** for troubleshooting
+### Example 2: Memory Management
+```c
+#include <stdlib.h>
+#include <string.h>
 
-#### Common Debug Commands
+char* create_string(const char* input) {
+    char* result = malloc(strlen(input));
+    strcpy(result, input);
+    return result;
+}
 
-```bash
-# Check extension status
-code --list-extensions | grep codeguard
-
-# View extension logs
-code --verbose
-
-# Test API endpoints
-curl -X GET http://localhost:5000/health
-curl -X GET http://localhost:3000/health
+int main() {
+    char* str = create_string("Hello, World!");
+    printf("%s\n", str);
+    // Missing free(str)
+    return 0;
+}
 ```
 
-### Getting Help
+**Analysis Results**:
+- High: Memory leak in `main()` function
+- Medium: Potential buffer overflow in `create_string()`
+- Info: Consider using safer string functions
 
-1. **Check Documentation**: Review this guide and other docs
-2. **Search Issues**: Look for similar issues on GitHub
-3. **Enable Debug Logging**: Gather detailed error information
-4. **Report Issues**: Create detailed bug reports with logs
-
-### Support Resources
-
-- **Documentation**: [docs/](docs/)
-- **GitHub Issues**: [Report Issues](https://github.com/hoda39/CodeGuard/issues)
-- **Discussions**: [Community Forum](https://github.com/hoda39/CodeGuard/discussions)
-- **Security**: [Security Policy](SECURITY.md)
-
-## Conclusion
-
-CodeGuard provides comprehensive security analysis for C/C++ code through both static and dynamic analysis techniques. By following this usage guide, you can effectively integrate CodeGuard into your development workflow and improve the security of your codebase.
-
-Remember to:
-- Keep the extension updated
-- Review analysis results regularly
-- Follow security best practices
-- Report issues and contribute improvements
-
-For advanced usage and customization, refer to the [API Documentation](API.md) and [Architecture Documentation](ARCHITECTURE.md). 
+This guide should help you get the most out of CodeGuard. For additional support, please refer to the main README or create an issue on GitHub. 

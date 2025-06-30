@@ -1,0 +1,7 @@
+{
+    "name": "StatusBar Colors",
+    "colors": {
+        "statusBarItem.errorBackground": "#6a0dad",
+        "statusBar.foreground": "#ffffff"
+    }
+}

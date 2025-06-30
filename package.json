@@ -1,0 +1,170 @@
+{
+  "name": "codeguard",
+  "displayName": "CodeGuard",
+  "description": "Comprehensive security analysis tool combining static and dynamic vulnerability detection for C/C++ code",
+  "version": "1.0.0",
+  "publisher": "CodeGuard",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/codeguard.git"
+  },
+  "icon": "resources/logo.png",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Testing",
+    "Linters",
+    "Security",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "workspaceContains:*.c",
+    "workspaceContains:*.cpp"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeguard.runAnalysis",
+        "title": "Run Security Analysis",
+        "category": "CodeGuard",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.runStaticAnalysis",
+        "title": "Run Static Analysis",
+        "category": "CodeGuard",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.runDynamicAnalysis",
+        "title": "Run Dynamic Analysis",
+        "category": "CodeGuard",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.cancelAnalysis",
+        "title": "Cancel Analysis",
+        "category": "CodeGuard",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.testUI",
+        "title": "Test UI Components",
+        "category": "CodeGuard"
+      },
+      {
+        "command": "codeguard.testUIComponents",
+        "title": "Test All UI Components",
+        "category": "CodeGuard"
+      },
+      {
+        "command": "codeguard.showPerformanceReport",
+        "title": "Show Performance Report",
+        "category": "CodeGuard"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "codeguard.runAnalysis",
+          "when": "editorLangId == c || editorLangId == cpp"
+        },
+        {
+          "command": "codeguard.runStaticAnalysis",
+          "when": "editorLangId == c || editorLangId == cpp"
+        },
+        {
+          "command": "codeguard.runDynamicAnalysis",
+          "when": "editorLangId == c || editorLangId == cpp"
+        },
+        {
+          "command": "codeguard.cancelAnalysis",
+          "when": "editorLangId == c || editorLangId == cpp"
+        },
+        {
+          "command": "codeguard.testUI"
+        },
+        {
+          "command": "codeguard.testUIComponents"
+        },
+        {
+          "command": "codeguard.showPerformanceReport"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codeguard.runAnalysis",
+        "key": "ctrl+shift+a",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.runStaticAnalysis",
+        "key": "ctrl+shift+s",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.runDynamicAnalysis",
+        "key": "ctrl+shift+d",
+        "when": "editorLangId == c || editorLangId == cpp"
+      },
+      {
+        "command": "codeguard.cancelAnalysis",
+        "key": "ctrl+shift+x",
+        "when": "editorLangId == c || editorLangId == cpp"
+      }
+    ],
+    "configuration": {
+      "title": "CodeGuard",
+      "properties": {
+        "codeguard.ui.showProgressNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show progress notifications during analysis"
+        },
+        "codeguard.ui.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show status bar with analysis information"
+        },
+        "codeguard.ui.autoShowOutput": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically show output panel after analysis"
+        },
+        "codeguard.ui.progressLocation": {
+          "type": "string",
+          "enum": ["notification", "window"],
+          "default": "notification",
+          "description": "Location to show progress during analysis"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.32",
+    "@types/vscode": "^1.96.0",
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.7.3"
+  }
+} 
