@@ -80,8 +80,16 @@ export class DiagnosticManager {
     }
 
     const diagnostics: vscode.Diagnostic[] = vulnerabilities.map(vuln => {
+      // If range is missing, create a default range using the line property
+      let range: vscode.Range;
+      if (vuln.range) {
+        range = vuln.range;
+      } else {
+        const line = vuln.line || 0;
+        range = new vscode.Range(line, 0, line, 100); // Default: whole line
+      }
       const diagnostic = new vscode.Diagnostic(
-        vuln.range,
+        range,
         this.formatVulnerabilityMessage(vuln),
         this.getDiagnosticSeverity(vuln.severity)
       );
@@ -94,7 +102,7 @@ export class DiagnosticManager {
       if (vuln.cweDescription) {
         diagnostic.relatedInformation = [
           new vscode.DiagnosticRelatedInformation(
-            new vscode.Location(vscode.Uri.file(filePath), vuln.range),
+            new vscode.Location(vscode.Uri.file(filePath), range),
             vuln.cweDescription
           )
         ];

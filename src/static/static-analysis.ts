@@ -59,9 +59,28 @@ export class StaticAnalysis {
       
       const duration = Date.now() - startTime;
       
+      // Enrich vulnerabilities with required fields
+      const enrichedVulnerabilities = (result.vulnerabilities || []).map((vuln: any, idx: number) => ({
+        id: vuln.id || `STATIC-${idx + 1}`,
+        type: vuln.type || 'static',
+        severity: vuln.severity || 'Medium',
+        message: vuln.message || vuln.description || 'Potential vulnerability detected',
+        line: typeof vuln.line === 'number' ? vuln.line : 0,
+        cweId: vuln.cweId || '',
+        cweDescription: vuln.cweDescription || '',
+        source: vuln.source || 'CodeGuard Static Analysis',
+        range: new vscode.Range(
+          typeof vuln.line === 'number' ? vuln.line : 0,
+          0,
+          typeof vuln.line === 'number' ? vuln.line : 0,
+          100
+        ),
+        ...vuln // preserve any extra fields
+      }));
+
       return {
         success: true,
-        vulnerabilities: result.vulnerabilities || [],
+        vulnerabilities: enrichedVulnerabilities,
         errors: result.errors || [],
         duration,
         type: 'static'

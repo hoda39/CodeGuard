@@ -22,8 +22,10 @@ let performanceMonitor: PerformanceMonitor;
 
 export async function activate(context: vscode.ExtensionContext) {
   try {
-    // Initialize managers
+    // Initialize output manager first
     outputManager = new OutputManager(context);
+    
+    // Initialize other managers
     configManager = new ConfigManager(context);
     diagnosticManager = new DiagnosticManager(context);
     statusBarManager = new StatusBarManager(context);
@@ -49,7 +51,15 @@ export async function activate(context: vscode.ExtensionContext) {
     outputManager.log('CodeGuard extension activated successfully 🛡️');
 
   } catch (error: any) {
-    outputManager.log(`Failed to activate CodeGuard extension: ${error.message}`, 'error');
+    // Fallback logging if output manager fails
+    console.error('Failed to activate CodeGuard extension:', error);
+    try {
+      if (outputManager) {
+        outputManager.log(`Failed to activate CodeGuard extension: ${error.message}`, 'error');
+      }
+    } catch (logError) {
+      console.error('Failed to log activation error:', logError);
+    }
     vscode.window.showErrorMessage(`CodeGuard activation failed: ${error.message}`);
   }
 }
@@ -144,6 +154,20 @@ function registerCommands(context: vscode.ExtensionContext) {
       outputManager.appendLine(report);
       outputManager.show();
       vscode.window.showInformationMessage('Performance report generated and displayed in output panel');
+    })
+  );
+
+  // Debug Output Channel command
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codeguard.debugOutput', async () => {
+      const fallbackLogs = outputManager.getFallbackLogs();
+      if (fallbackLogs.length > 0) {
+        const message = `Found ${fallbackLogs.length} fallback logs. Check console for details.`;
+        vscode.window.showInformationMessage(message);
+        console.log('Fallback logs:', fallbackLogs);
+      } else {
+        vscode.window.showInformationMessage('No fallback logs found. Output channel is working properly.');
+      }
     })
   );
 }
